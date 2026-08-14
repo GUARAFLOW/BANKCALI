@@ -55,7 +55,6 @@ conn.commit()
 
 # --- TÍTULO PRINCIPAL ---
 st.title("💳 CREDITOS ROTATIVOS BANKCALI")
-st.image("logobankcali.jpeg.jpeg", use_column_width=True)
 
 # --- CONTROL DE PERMISOS / ROLES EN BARRA LATERAL ---
 st.sidebar.title("🔐 Control de Acceso")
