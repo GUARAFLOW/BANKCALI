@@ -54,7 +54,7 @@ cursor.execute("CREATE TABLE IF NOT EXISTS pagos (id INTEGER PRIMARY KEY AUTOINC
 conn.commit()
 
 # --- TÍTULO PRINCIPAL ---
-st.title("💳 Plataforma de Crédito Rotativo - Puerto Rico (Caquetá)")
+st.title("💳 CREDITOS ROTATIVOS BANKCALI")
 
 # --- CONTROL DE PERMISOS / ROLES EN BARRA LATERAL ---
 st.sidebar.title("🔐 Control de Acceso")
