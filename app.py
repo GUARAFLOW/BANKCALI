@@ -14,118 +14,168 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
     <style>
-        .corporate-banner { padding: 30px; background: linear-gradient(135deg, #0A192F 0%, #1E3A8A 100%); color: white; border-radius: 12px; margin-bottom: 25px; text-align: center; }
+        .main {
+            background-color: #f8f9fa;
+        }
+        .css-1r6slb0, .stApp {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        h1, h2, h3 {
+            color: #1E3A8A;
+        }
+        div.corporate-banner {
+            padding: 30px 20px;
+            background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%) !important;
+            color: white !important;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            text-align: center;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            border: 1px solid #38BDF8;
+        }
+        div.corporate-banner h2, div.corporate-banner p {
+            color: white !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- NUEVA LÓGICA DE SCORING ---
-def evaluar_riesgo_y_cupo(ingresos, gastos):
-    pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
+# --- PIN DE ADMINISTRADOR ---
+PIN_ADMIN = "123456789"
+
+# --- FUNCIÓN PARA ENVIAR SMS GRATIS (TEXTBELT) ---
+def enviar_sms_gratis_textbelt(celular_cliente, codigo_otp):
+    celular_limpio = ''.join(filter(str.isdigit, celular_cliente))
+    if not celular_limpio.startswith("57"):
+        celular_limpio = "57" + celular_limpio
+        
+    mensaje = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
     
-    # RANGO 1: 100,000 a 1,000,000
-    if 100000 <= ingresos <= 1000000:
-        if pct_gastos <= 0.35:
-            cupo = 80000
-            estado = "APROBADO"
-        else:
-            cupo = 0
-            estado = "RECHAZADO"
-            
-    # RANGO 2: 1,000,001 a 2,500,000
-    elif 1000001 <= ingresos <= 2500000:
-        margen_disponible = ingresos - gastos
-        if margen_disponible < 0:
-            cupo = 0
-            estado = "RECHAZADO"
-        else:
-            cupo = round((margen_disponible * 0.25) / 10000) * 10000
-            estado = "APROBADO" if cupo > 0 else "RECHAZADO"
-            
-    # RANGO 3: > 2,500,001
+    try:
+        response = requests.post('https://textbelt.com/text', {
+            'phone': f'+{celular_limpio}',
+            'message': mensaje,
+            'key': 'textbelt',
+        }, timeout=8)
+        
+        resultado = response.json()
+        return resultado.get('success', False)
+    except Exception as e:
+        print(f"Error enviando SMS: {e}")
+        return False
+
+# --- MOTOR DE EVALUACIÓN CREDITICIA (REGLA DE INGRESOS Y 20%) ---
+def evaluar_riesgo_y_cupo(ingresos):
+    if ingresos <= 1000000:
+        cupo_final = 80000
     else:
-        cupo_base = ingresos * 0.30
-        if pct_gastos > 0.50:
-            reduccion = (pct_gastos - 0.50) * 0.5 
-            cupo_final = cupo_base * (1 - reduccion)
-        else:
-            cupo_final = cupo_base
-        cupo = round(cupo_final / 10000) * 10000
-        estado = "APROBADO" if cupo > 0 else "RECHAZADO"
+        cupo_calculado = ingresos * 0.20
+        cupo_final = round(cupo_calculado / 10000) * 10000
+        
+    return cupo_final, "APROBADO", f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo_final:,.0f} COP."
 
-    mensaje = f"✅ Cupo aprobado: ${cupo:,.0f} COP." if cupo > 0 else "❌ Crédito no aprobado."
-    return cupo, estado, mensaje
-
-# --- CONEXIÓN A BASE DE DATOS ---
+# --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
 
-# --- INICIALIZAR SESIÓN ---
+# --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
+    st.session_state.rol = None
+    st.session_state.nombre = None
 
-# --- LOGIN ---
+# --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
+st.sidebar.markdown("""
+    <div style="text-align: center; padding: 12px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+        <h3 style="color: white; margin: 0; font-size: 1.3rem;">Datos de Acceso</h3>
+        <p style="font-size: 0.75rem; margin: 0; opacity: 0.85;">Plataforma BankCali</p>
+    </div>
+""", unsafe_allow_html=True)
+
 if not st.session_state.autenticado:
-    st.sidebar.title("Datos de Acceso")
-    doc_login = st.sidebar.text_input("Documento")
-    pin_login = st.sidebar.text_input("PIN", type="password")
-    if st.sidebar.button("Iniciar Sesión"):
-        usuario_db = conn.query("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", params={"doc": doc_login, "pin": pin_login})
-        if not usuario_db.empty:
-            st.session_state.autenticado = True
-            st.session_state.nombre = usuario_db.iloc[0]['nombre']
-            st.session_state.rol = usuario_db.iloc[0]['rol']
-            st.rerun()
+    st.sidebar.markdown("Por favor, ingresa tus credenciales autorizadas:")
+    doc_login = st.sidebar.text_input("Documento de Usuario")
+    pin_login = st.sidebar.text_input("PIN de Acceso", type="password")
+    
+    if st.sidebar.button("Iniciar Sesión", use_container_width=True):
+        if doc_login and pin_login:
+            try:
+                usuario_db = conn.query("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", params={"doc": doc_login, "pin": pin_login}, ttl=0)
+                
+                if not usuario_db.empty:
+                    st.session_state.autenticado = True
+                    st.session_state.rol = usuario_db.iloc[0]['rol']
+                    st.session_state.nombre = usuario_db.iloc[0]['nombre']
+                    st.rerun()
+                else:
+                    st.sidebar.error("❌ Documento o PIN incorrectos.")
+            except Exception as e:
+                st.sidebar.error("Error al conectar con la base de datos.")
         else:
-            st.sidebar.error("Credenciales incorrectas")
+            st.sidebar.warning("⚠️ Completa ambos campos.")
+            
+    st.sidebar.warning("🔒 **Sistema Protegido**. Inicia sesión para habilitar las operaciones.")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Desarrollado para Gestión Comercial<br>© 2026</p>", unsafe_allow_html=True)
+    
+    st.markdown("""
+        <div style="text-align: center; padding: 20px;">
+            <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
+            <p style="color: #555; font-size: 1.2rem; margin-bottom: 30px;">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col_centro1, col_centro2, col_centro3 = st.columns([1, 3, 1])
+    with col_centro2:
+        try:
+            st.image("LOGOBANKCALI.jpeg", use_container_width=True)
+        except Exception:
+            st.error("No se pudo cargar la imagen grande en el área principal.")
+            
     st.stop()
 
-# --- MENÚ DE NAVEGACIÓN ---
-es_admin = (st.session_state.rol == "Administrador")
-st.sidebar.success(f"Sesión: {st.session_state.nombre}")
-if st.sidebar.button("Cerrar Sesión"):
+# --- 3. SI EL INICIO DE SESIÓN FUE EXITOSO ---
+st.sidebar.success(f"👤 **Sesión Activa:**\n\n{st.session_state.nombre}\n*({st.session_state.rol})*")
+
+if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.autenticado = False
+    st.session_state.rol = None
+    st.session_state.nombre = None
     st.rerun()
 
-menu_opciones = ["1. Simular / Solicitar Crédito (POS)", "2. Registrar Nuevo Cliente + Scoring"]
+st.sidebar.markdown("---")
+
+menu_opciones = [
+    "1. Simular / Solicitar Crédito (POS)", 
+    "2. Registrar Nuevo Cliente + Scoring de Cupo"
+]
+
+es_admin = (st.session_state.rol == "Administrador")
+
 if es_admin:
-    menu_opciones.extend(["3. Registrar Pagos / Abonar Cuotas", "4. Gestión General de Clientes", "5. Gestión de Almacenes Aliados", "6. Panel General de Administración", "7. Gestión de Usuarios"])
+    menu_opciones.extend([
+        "3. Registrar Pagos / Abonar Cuotas",
+        "4. Gestión General de Clientes", 
+        "5. Gestión de Almacenes Aliados",
+        "6. Panel General de Administración",
+        "7. Gestión de Usuarios"
+    ])
 
-opcion = st.sidebar.selectbox("Módulo", menu_opciones)
+st.sidebar.markdown("### 🧭 Menú de Navegación")
+opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visibility="collapsed")
 
-# --- VISTAS ---
-if opcion == "2. Registrar Nuevo Cliente + Scoring":
-    st.header("📝 Evaluación y Registro")
-    
-    # POLÍTICA SOLO PARA ADMIN
-    if es_admin:
-        st.info("💡 **Política de Crédito:** Scoring según capacidad de pago (Ingresos vs Gastos).")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        c_cedula = st.text_input("Cédula *")
-        c_nombre = st.text_input("Nombre *")
-        c_direccion = st.text_input("Dirección *")
-        c_celular = st.text_input("Celular *")
-    with col2:
-        c_ocupacion = st.selectbox("Actividad", ["Empleado", "Independiente", "Otro"])
-        c_ingresos = st.number_input("Ingresos Mensuales", value=1000000, step=50000)
-        c_gastos = st.number_input("Gastos Mensuales", value=400000, step=50000)
-    
-    # CÁLCULO
-    cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(c_ingresos, c_gastos)
-    
-    st.markdown("---")
-    st.metric("Cupo Asignado", f"${cupo_sugerido:,.0f} COP")
-    st.write(mensaje_eval)
+st.sidebar.markdown("---")
+st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-    if st.button("Guardar Cliente"):
-        with conn.session as s:
-            s.execute(text("INSERT INTO clientes (cedula, nombre, direccion, celular, ingresos, gastos, cupo_aprobado, cupo_disponible) VALUES (:c, :n, :d, :ce, :i, :g, :ca, :cd)"), 
-                      {"c": c_cedula, "n": c_nombre, "d": c_direccion, "ce": c_celular, "i": c_ingresos, "g": c_gastos, "ca": cupo_sugerido, "cd": cupo_sugerido})
-            s.commit()
-        st.success("Cliente registrado correctamente.")
+# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS ---
+st.markdown("""
+    <div class="corporate-banner">
+        <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
+        <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.95;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- MÓDULO 1: SOLICITUD EN PUNTO DE VENTA (POS) ---
 if opcion == "1. Simular / Solicitar Crédito (POS)":
