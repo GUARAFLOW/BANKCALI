@@ -27,13 +27,14 @@ st.markdown("""
             color: #1E3A8A;
         }
         .corporate-banner {
-            padding: 25px 20px;
-            background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
+            padding: 30px 20px;
+            background: linear-gradient(135deg, #0A192F 0%, #1E3A8A 50%, #0284C7 100%);
             color: white;
             border-radius: 12px;
             margin-bottom: 25px;
             text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+            border-bottom: 4px solid #38BDF8;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -166,11 +167,11 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS ---
+# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS (ESTILO LOGO BANKCALI) ---
 st.markdown("""
     <div class="corporate-banner">
-        <h2 style="color: white; margin: 0;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
-        <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
+        <h2 style="color: white; margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
+        <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.95;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
 
