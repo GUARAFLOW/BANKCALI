@@ -1069,23 +1069,33 @@ elif opcion == "5. Gestión General de Clientes" and es_admin:
     st.error(f"Error al cargar clientes: {e}")
 
 # =============================================================================
-# MÓDULO 6: GESTIÓN DE ALMACENES ALIADOS CON SUBIDA DE LOGO (SOLO ADMIN)
+# MÓDULO 6: GESTIÓN DE ALMACENES ALIADOS (SOLO ADMIN)
 # =============================================================================
 elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
   st.header("🏪 Administración de Comercios Aliados")
-  st.markdown("Registro de tiendas, asignación de comisiones, logos y auditoría.")
+  st.markdown("Gestión integral de tiendas, comisiones, logos y estado de convenios.")
   st.markdown("---")
 
-  col_com1, col_com2 = st.columns([2, 1])
+  tab_listar, tab_agregar, tab_editar, tab_eliminar = st.tabs([
+      "📋 Comercios Registrados",
+      "➕ Agregar Comercio",
+      "✏️ Modificar Comercio",
+      "🗑️ Eliminar Comercio",
+  ])
 
-  with col_com1:
+  # --- PESTAÑA 1: LISTAR COMERCIOS ---
+  with tab_listar:
     st.subheader("Tiendas Actualmente Aliadas")
+    col_r, _ = st.columns([1, 4])
+    with col_r:
+      if st.button("🔄 Actualizar Tabla", key="refresh_comercios"):
+        st.rerun()
+
     try:
       df_comercios_list = conn.query(
           "SELECT nombre, comision, logo_base64 FROM comercios", ttl=0
       )
       if not df_comercios_list.empty:
-        # Formatear la columna de logo para mostrar indicador
         df_comercios_list["Logo Cargado"] = df_comercios_list[
             "logo_base64"
         ].apply(
@@ -1094,55 +1104,163 @@ elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
             else "❌ No"
         )
         st.dataframe(
-            df_comercios_list[["nombre", "comision", "Logo Cargado"]],
+            df_comercios_list[["nombre", "comision", "Logo Cargado"]].rename(
+                columns={"nombre": "Nombre del Comercio", "comision": "Comisión (%)"}
+            ),
             use_container_width=True,
             hide_index=True,
         )
+        st.caption(f"Total de comercios aliados: **{len(df_comercios_list)}**")
       else:
         st.info("No hay comercios aliados registrados.")
     except Exception as e:
       st.error(f"Error al cargar comercios: {e}")
 
-  with col_com2:
-    st.subheader("➕ Nuevo Comercio Aliado")
-    nom_com = st.text_input("Nombre de la Tienda *")
-    com_pct = st.number_input(
-        "Comisión (%) *", min_value=1.0, max_value=20.0, value=5.0, step=0.5
-    )
-    logo_file = st.file_uploader(
-        "🖼️ Logo del Comercio (Opcional)", type=["png", "jpg", "jpeg"]
-    )
+  # --- PESTAÑA 2: AGREGAR COMERCIO ---
+  with tab_agregar:
+    st.subheader("➕ Registrar Nuevo Comercio Aliado")
+    with st.form("form_nuevo_comercio", clear_on_submit=True):
+      col_c1, col_c2 = st.columns(2)
+      with col_c1:
+        nom_com = st.text_input("Nombre de la Tienda *")
+        com_pct = st.number_input(
+            "Comisión (%) *", min_value=1.0, max_value=20.0, value=5.0, step=0.5
+        )
+      with col_c2:
+        logo_file = st.file_uploader(
+            "🖼️ Logo del Comercio (Opcional)", type=["png", "jpg", "jpeg"], key="upload_add_logo"
+        )
 
-    logo_b64 = None
-    if logo_file is not None:
-      bytes_data = logo_file.read()
-      encoded_string = base64.b64encode(bytes_data).decode()
-      mime_type = logo_file.type
-      logo_b64 = f"data:{mime_type};base64,{encoded_string}"
-      st.image(
-          logo_file, caption="Vista previa del Logo", use_container_width=True
-      )
+      btn_add_com = st.form_submit_button("💾 Registrar Comercio")
 
-    if st.button("💾 Registrar Comercio", use_container_width=True):
-      if nom_com.strip():
-        try:
-          with conn.session as s:
-            s.execute(
-                text("""
-                            INSERT INTO comercios (nombre, comision, logo_base64) 
-                            VALUES (:n, :c, :l)
-                        """),
-                {"n": nom_com.strip(), "c": com_pct, "l": logo_b64},
-            )
-            s.commit()
-          st.success(
-              f"✅ Comercio **{nom_com}** registrado exitosamente con su logo."
-          )
-          st.rerun()
-        except Exception as e:
-          st.error(f"Error al guardar comercio: {e}")
+      if btn_add_com:
+        if nom_com.strip():
+          logo_b64 = None
+          if logo_file is not None:
+            bytes_data = logo_file.read()
+            encoded_string = base64.b64encode(bytes_data).decode()
+            mime_type = logo_file.type
+            logo_b64 = f"data:{mime_type};base64,{encoded_string}"
+
+          try:
+            with conn.session as s:
+              s.execute(
+                  text("""
+                      INSERT INTO comercios (nombre, comision, logo_base64) 
+                      VALUES (:n, :c, :l)
+                  """),
+                  {"n": nom_com.strip(), "c": com_pct, "l": logo_b64},
+              )
+              s.commit()
+            st.success(f"✅ Comercio **{nom_com}** registrado exitosamente.")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error al guardar comercio: {e}")
+        else:
+          st.warning("⚠️ Escribe el nombre del comercio.")
+
+  # --- PESTAÑA 3: MODIFICAR COMERCIO ---
+  with tab_editar:
+    st.subheader("✏️ Modificar Comercio Aliado")
+    try:
+      df_com_mod = conn.query("SELECT * FROM comercios", ttl=0)
+      if df_com_mod.empty:
+        st.info("No hay comercios disponibles para modificar.")
       else:
-        st.warning("⚠️ Escribe el nombre del comercio.")
+        lista_nombres = df_com_mod["nombre"].tolist()
+        com_seleccionado = st.selectbox("Seleccione el Comercio a Modificar", lista_nombres)
+
+        datos_com = df_com_mod[df_com_mod["nombre"] == com_seleccionado].iloc[0]
+
+        with st.form("form_editar_comercio"):
+          col_m1, col_m2 = st.columns(2)
+          with col_m1:
+            e_nom_com = st.text_input("Nombre de la Tienda *", value=datos_com["nombre"])
+            e_com_pct = st.number_input(
+                "Comisión (%) *",
+                min_value=1.0,
+                max_value=20.0,
+                value=float(datos_com["comision"]),
+                step=0.5,
+            )
+          with col_m2:
+            st.caption("🖼️ Logo Actual:")
+            if pd.notnull(datos_com.get("logo_base64")) and str(datos_com["logo_base64"]).strip() != "":
+              st.markdown(f'<img src="{datos_com["logo_base64"]}" style="max-height: 60px; margin-bottom: 10px;" />', unsafe_allow_html=True)
+            else:
+              st.info("Sin logo registrado.")
+
+            logo_file_edit = st.file_uploader(
+                "Actualizar Logo (Opcional - Deja vacío para conservar el actual)",
+                type=["png", "jpg", "jpeg"],
+                key="upload_edit_logo",
+            )
+
+          btn_edit_com = st.form_submit_button("💾 Actualizar Comercio")
+
+          if btn_edit_com:
+            if e_nom_com.strip():
+              logo_b64_updated = datos_com.get("logo_base64")
+              if logo_file_edit is not None:
+                bytes_data = logo_file_edit.read()
+                encoded_string = base64.b64encode(bytes_data).decode()
+                mime_type = logo_file_edit.type
+                logo_b64_updated = f"data:{mime_type};base64,{encoded_string}"
+
+              try:
+                with conn.session as s:
+                  s.execute(
+                      text("""
+                          UPDATE comercios 
+                          SET nombre = :new_n, comision = :c, logo_base64 = :l
+                          WHERE nombre = :old_n
+                      """),
+                      {
+                          "new_n": e_nom_com.strip(),
+                          "c": e_com_pct,
+                          "l": logo_b64_updated,
+                          "old_n": com_seleccionado,
+                      },
+                  )
+                  s.commit()
+                st.success(f"✅ Comercio **{e_nom_com}** actualizado correctamente.")
+                st.rerun()
+              except Exception as e:
+                st.error(f"Error al actualizar el comercio: {e}")
+            else:
+              st.warning("⚠️ El nombre del comercio no puede estar vacío.")
+    except Exception as e:
+      st.error(f"Error al cargar datos para modificar: {e}")
+
+  # --- PESTAÑA 4: ELIMINAR COMERCIO ---
+  with tab_eliminar:
+    st.subheader("🗑️ Eliminar Comercio Aliado")
+    try:
+      df_com_del = conn.query("SELECT nombre FROM comercios", ttl=0)
+      if df_com_del.empty:
+        st.info("No hay comercios registrados para eliminar.")
+      else:
+        com_a_eliminar = st.selectbox(
+            "Seleccione el Comercio que desea eliminar:", df_com_del["nombre"].tolist()
+        )
+        st.warning(
+            f"⚠️ **Atención:** Al eliminar el comercio **{com_a_eliminar}** ya no estará disponible para seleccionar en el punto de venta (POS)."
+        )
+
+        if st.button("🔥 Confirmar Eliminación de Comercio", use_container_width=True):
+          try:
+            with conn.session as s:
+              s.execute(
+                  text("DELETE FROM comercios WHERE nombre = :n"),
+                  {"n": com_a_eliminar},
+              )
+              s.commit()
+            st.success(f"✅ Comercio **{com_a_eliminar}** eliminado con éxito.")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error al eliminar comercio: {e}")
+    except Exception as e:
+      st.error(f"Error al consultar comercios a eliminar: {e}")
 
 # =============================================================================
 # MÓDULO 7: PANEL GENERAL DE ADMINISTRACIÓN (SOLO ADMIN)
