@@ -26,7 +26,6 @@ st.markdown("""
         h1, h2, h3 {
             color: #1E3A8A;
         }
-        /* Estilo totalmente personalizado para el banner corporativo */
         div.corporate-banner {
             padding: 30px 20px;
             background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%) !important;
@@ -121,7 +120,6 @@ if not st.session_state.autenticado:
     st.sidebar.markdown("---")
     st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Desarrollado para Gestión Comercial<br>© 2026</p>", unsafe_allow_html=True)
     
-    # --- PANTALLA DE INICIO (NO AUTENTICADO): LOGOTIPO EN GRANDE EN LA PARTE BLANCA ---
     st.markdown("""
         <div style="text-align: center; padding: 20px;">
             <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
@@ -171,7 +169,7 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS (ESTILO OSCURO / LOGO BANKCALI) ---
+# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS ---
 st.markdown("""
     <div class="corporate-banner">
         <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
@@ -197,7 +195,10 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         with col1:
             st.markdown("##### 👤 Datos del Cliente")
             comercio_sel = st.selectbox("Seleccione el Comercio Aliado", df_comercios['nombre'].tolist())
-            comision_comercio = df_comercios[df_comercios['nombre'] == comercio_sel]['comision'].values[0]
+            
+            # Extracción segura de la comisión para evitar NameError
+            match_comision = df_comercios[df_comercios['nombre'] == comercio_sel]['comision']
+            comercio_comercio = float(match_comision.values[0]) if not match_comision.empty else 5.0
             
             cedula = st.text_input("Número de Cédula del Cliente")
             
