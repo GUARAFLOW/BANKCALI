@@ -598,122 +598,90 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           del st.session_state["otp_actual"]
         else:
           st.error("❌ Código OTP incorrecto.")
-# 1. Definición previa de variables para evitar NameError
-img_logo_html = ""
-try:
-    df_logo = conn.query(
-        "SELECT logo_base64 FROM comercios WHERE nombre = :nom", 
-        params={"nom": comercio_seleccionado}, 
-        ttl=0
-    )
-    if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-        logo_b64 = df_logo.iloc[0]["logo_base64"]
-        img_logo_html = f'<img src="{logo_b64}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
-except Exception:
-    img_logo_html = ""
+          # =============================================================================
+    # GENERACIÓN Y MUESTRA DEL TICKET POS
+    # =============================================================================
 
-# 2. Estilos CSS de impresión (cadena simple)
-st.markdown("""
-<style>
-@media print {
-    [data-testid="stSidebar"], 
-    header, 
-    footer, 
-    .stButton, 
-    iframe {
-        display: none !important;
-    }
-    body {
-        background: white !important;
-    }
-    .ticket-pos-box {
-        width: 100% !important;
-        max-width: 320px !important;
-        margin: 0 auto !important;
-        border: 1px solid #000 !important;
-        box-shadow: none !important;
-        background: white !important;
-        color: black !important;
-        padding: 10px !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
+    # 1. Validación de Logo y Fecha
+    logo_html = ""
+    try:
+        df_logo = conn.query("SELECT logo_base64 FROM comercios WHERE nombre = :nom", params={"nom": comercio_seleccionado}, ttl=0)
+        if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+            logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
+    except Exception:
+        logo_html = ""
 
-# 3. Renderizado del Ticket HTML (ya con img_logo_html declarada)
-fecha_actual_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-html_ticket = f"""
-<div class="ticket-pos-box" style="
-    border: 2px dashed #d3ad69; 
-    border-radius: 10px; 
-    padding: 20px; 
-    background-color: #fffdf5; 
-    max-width: 380px; 
-    margin: 0 auto; 
-    font-family: monospace; 
-    color: #111;">
-    
-    <div style="text-align: center;">
-        {img_logo_html}
-        <h3 style="margin: 0; color: #0d233a;">{comercio_seleccionado}</h3>
-        <p style="margin: 4px 0; font-size: 12px;">
-            Financiado por <b>BANKCALI</b><br>
-            Puerto Rico, Caquetá<br>
-            <b>COMPROBANTE DE COMPRA A CRÉDITO</b>
+    # 2. Ocultar interfaz al imprimir (CSS simple)
+    st.markdown("""
+    <style>
+    @media print {
+        [data-testid="stSidebar"], header, footer, .stButton, iframe {
+            display: none !important;
+        }
+        body { background: white !important; }
+        .ticket-pos-box {
+            width: 100% !important;
+            max-width: 320px !important;
+            margin: 0 auto !important;
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            padding: 10px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # 3. HTML del Comprobante
+    ticket_html = f"""
+    <div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
+        <div style="text-align: center;">
+            {logo_html}
+            <h3 style="margin: 0; color: #0d233a;">{comercio_seleccionado}</h3>
+            <p style="margin: 4px 0; font-size: 12px;">
+                Financiado por <b>BANKCALI</b><br>
+                Puerto Rico, Caquetá<br>
+                <b>COMPROBANTE DE COMPRA A CRÉDITO</b>
+            </p>
+        </div>
+        <hr style="border: none; border-top: 1px dashed #666;">
+        <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+            <b>N° Crédito:</b> {id_credito_gen}<br>
+            <b>Fecha:</b> {fecha_str}<br>
+            <b>Cliente:</b> {nombre_cliente}<br>
+            <b>Cédula:</b> {cedula_cliente}
+        </p>
+        <hr style="border: none; border-top: 1px dashed #666;">
+        <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+            <b>Monto Compra:</b> ${monto_compra:,.0f} COP<br>
+            <b>N° Cuotas:</b> {num_cuotas} Quincenales<br>
+            <b>Valor Cuota:</b> ${valor_cuota:,.0f} COP<br>
+            <b>Total a Pagar:</b> ${total_pagar:,.0f} COP
+        </p>
+        <hr style="border: none; border-top: 1px dashed #666;">
+        <p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
+            Firma Digital Verificada vía OTP SMS<br>
+            ¡Gracias por su compra!
         </p>
     </div>
-    <hr style="border: none; border-top: 1px dashed #666;">
-    <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-        <b>N° Crédito:</b> {id_credito_gen}<br>
-        <b>Fecha:</b> {fecha_actual_str}<br>
-        <b>Cliente:</b> {nombre_cliente}<br>
-        <b>Cédula:</b> {cedula_cliente}
-    </p>
-    <hr style="border: none; border-top: 1px dashed #666;">
-    <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-        <b>Monto Compra:</b> ${monto_compra:,.0f} COP<br>
-        <b>N° Cuotas:</b> {num_cuotas} Quincenales<br>
-        <b>Valor Cuota:</b> ${valor_cuota:,.0f} COP<br>
-        <b>Total a Pagar:</b> ${total_pagar:,.0f} COP
-    </p>
-    <hr style="border: none; border-top: 1px dashed #666;">
-    <p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
-        Firma Digital Verificada vía OTP SMS<br>
-        ¡Gracias por su compra!
-    </p>
-</div>
-"""
-st.markdown(html_ticket, unsafe_allow_html=True)
+    """
+    st.markdown(ticket_html, unsafe_allow_html=True)
 
-st.write("")
+    st.write("")
 
-# 4. Botón de Impresión JavaScript
-components.html("""
+    # 4. Botón de Impresión en JavaScript
+    js_btn = """
     <script>
-    function ejecutarImpresion() {
-        window.parent.print();
-    }
+    function imprimirTicket() { window.parent.print(); }
     </script>
-    <button onclick="ejecutarImpresion()" style="
-        background-color: #0f2537;
-        color: white;
-        border: none;
-        padding: 12px 20px;
-        border-radius: 8px;
-        width: 100%;
-        font-weight: bold;
-        font-size: 15px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    ">
+    <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
         🖨️ Imprimir Ticket / Guardar PDF
     </button>
-""", height=65)
+    """
+    components.html(js_btn, height=65)
 
 # =============================================================================
 # MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO
