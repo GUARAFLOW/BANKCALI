@@ -600,21 +600,43 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           st.error("❌ Código OTP incorrecto.")
          
         # =============================================================================
-        # GENERACIÓN Y MUESTRA DEL TICKET POS
-        # =============================================================================
+    # GENERACIÓN Y MUESTRA DEL TICKET POS (A PRUEBA DE NAMEERROR)
+    # =============================================================================
 
-    # 1. Validación de Logo y Fecha
-    logo_html = ""
-    try:
-        df_logo = conn.query("SELECT logo_base64 FROM comercios WHERE nombre = :nom", params={"nom": comercio_seleccionado}, ttl=0)
-        if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-            logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
-    except Exception:
-        logo_html = ""
-
+    # 1. Recuperación segura de variables
+    comercio_nom = (
+        locals().get("comercio_seleccionado")
+        or locals().get("comercio_aliado")
+        or locals().get("comercio")
+        or "Comercio Aliado"
+    )
+    id_cred_str = (
+        locals().get("id_credito_gen")
+        or locals().get("num_credito")
+        or "CR-00000"
+    )
+    cliente_nom = locals().get("nombre_cliente") or "Cliente"
+    cliente_ced = locals().get("cedula_cliente") or "N/A"
+    monto_val = locals().get("monto_compra") or 0
+    cuotas_val = locals().get("num_cuotas") or 1
+    cuota_val = locals().get("valor_cuota") or 0
+    total_val = locals().get("total_pagar") or 0
     fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 2. Ocultar interfaz al imprimir (CSS simple)
+    # 2. Obtención del logo
+    logo_html = ""
+    try:
+      df_logo = conn.query(
+          "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
+          params={"nom": comercio_nom},
+          ttl=0,
+      )
+      if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+        logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
+    except Exception:
+      logo_html = ""
+
+    # 3. Estilos CSS de impresión
     st.markdown("""
     <style>
     @media print {
@@ -636,12 +658,12 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     </style>
     """, unsafe_allow_html=True)
 
-    # 3. HTML del Comprobante
+    # 4. Renderizado del Ticket HTML
     ticket_html = f"""
     <div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
         <div style="text-align: center;">
             {logo_html}
-            <h3 style="margin: 0; color: #0d233a;">{comercio_seleccionado}</h3>
+            <h3 style="margin: 0; color: #0d233a;">{comercio_nom}</h3>
             <p style="margin: 4px 0; font-size: 12px;">
                 Financiado por <b>BANKCALI</b><br>
                 Puerto Rico, Caquetá<br>
@@ -650,17 +672,17 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         </div>
         <hr style="border: none; border-top: 1px dashed #666;">
         <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-            <b>N° Crédito:</b> {id_credito_gen}<br>
+            <b>N° Crédito:</b> {id_cred_str}<br>
             <b>Fecha:</b> {fecha_str}<br>
-            <b>Cliente:</b> {nombre_cliente}<br>
-            <b>Cédula:</b> {cedula_cliente}
+            <b>Cliente:</b> {cliente_nom}<br>
+            <b>Cédula:</b> {cliente_ced}
         </p>
         <hr style="border: none; border-top: 1px dashed #666;">
         <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-            <b>Monto Compra:</b> ${monto_compra:,.0f} COP<br>
-            <b>N° Cuotas:</b> {num_cuotas} Quincenales<br>
-            <b>Valor Cuota:</b> ${valor_cuota:,.0f} COP<br>
-            <b>Total a Pagar:</b> ${total_pagar:,.0f} COP
+            <b>Monto Compra:</b> ${monto_val:,.0f} COP<br>
+            <b>N° Cuotas:</b> {cuotas_val} Quincenales<br>
+            <b>Valor Cuota:</b> ${cuota_val:,.0f} COP<br>
+            <b>Total a Pagar:</b> ${total_val:,.0f} COP
         </p>
         <hr style="border: none; border-top: 1px dashed #666;">
         <p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
@@ -673,7 +695,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
     st.write("")
 
-    # 4. Botón de Impresión en JavaScript
+    # 5. Botón de Impresión JavaScript
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
