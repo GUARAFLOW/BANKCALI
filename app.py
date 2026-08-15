@@ -599,12 +599,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
 
-    if "ultimo_ticket" in st.session_state:
-      t = st.session_state["ultimo_ticket"]
-      st.markdown("---")
-      st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
-
-      import streamlit.components.v1 as components
+    import streamlit.components.v1 as components
 
       # 1. Estilos CSS para que al imprimir SOLO salga el ticket (oculta sidebar, botones y headers de Streamlit)
       st.markdown("""
@@ -709,6 +704,8 @@ components.html("""
         🖨️ Imprimir Ticket / Guardar PDF
     </button>
 """, height=65)
+
+      
 
 # =============================================================================
 # MÓDULO 2: REGISTRO + SCORING + VERIFICACIÓN OTP & CONTRATO
