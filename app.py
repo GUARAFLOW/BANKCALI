@@ -75,17 +75,6 @@ def evaluar_riesgo_y_cupo(ingresos):
 # --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
 
-# --- LOGOTIPO Y ENCABEZADO EN BARRA LATERAL ---
-try:
-    st.sidebar.image("LOGOBANKCALI.jpeg", use_container_width=True)
-except Exception:
-    st.sidebar.markdown("""
-        <div style="text-align: center; padding: 10px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 10px;">
-            <h3 style="color: white; margin: 0;">BankCali</h3>
-            <p style="font-size: 0.8rem; margin: 0; opacity: 0.8;">Red Comercial Autorizada</p>
-        </div>
-    """, unsafe_allow_html=True)
-
 # --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -93,8 +82,12 @@ if "autenticado" not in st.session_state:
     st.session_state.nombre = None
 
 # --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
-st.sidebar.markdown("### 🔐 Portal de Acceso Seguro")
-st.sidebar.markdown("---")
+st.sidebar.markdown("""
+    <div style="text-align: center; padding: 12px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+        <h3 style="color: white; margin: 0; font-size: 1.3rem;">Datos de Acceso</h3>
+        <p style="font-size: 0.75rem; margin: 0; opacity: 0.85;">Plataforma BankCali</p>
+    </div>
+""", unsafe_allow_html=True)
 
 if not st.session_state.autenticado:
     st.sidebar.markdown("Por favor, ingresa tus credenciales autorizadas:")
@@ -122,6 +115,22 @@ if not st.session_state.autenticado:
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Desarrollado para Gestión Comercial<br>© 2026</p>", unsafe_allow_html=True)
+    
+    # --- PANTALLA DE INICIO (NO AUTENTICADO): LOGOTIPO EN GRANDE EN LA PARTE BLANCA ---
+    st.markdown("""
+        <div style="text-align: center; padding: 20px;">
+            <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
+            <p style="color: #555; font-size: 1.2rem; margin-bottom: 30px;">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col_centro1, col_centro2, col_centro3 = st.columns([1, 3, 1])
+    with col_centro2:
+        try:
+            st.image("LOGOBANKCALI.jpeg", use_container_width=True)
+        except Exception:
+            st.error("No se pudo cargar la imagen grande en el área principal.")
+            
     st.stop()
 
 # --- 3. SI EL INICIO DE SESIÓN FUE EXITOSO ---
@@ -157,17 +166,10 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO CON LOGOTIPO EN LA VISTA PRINCIPAL ---
-st.markdown('<div class="corporate-banner">', unsafe_allow_html=True)
-col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
-with col_img2:
-    try:
-        st.image("LOGOBANKCALI.jpeg", use_container_width=True)
-    except Exception:
-        st.markdown("<h1 style='color: white; margin: 0;'>BankCali</h1>", unsafe_allow_html=True)
-
+# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS ---
 st.markdown("""
-        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
+    <div class="corporate-banner">
+        <h2 style="color: white; margin: 0;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
@@ -426,7 +428,7 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
             st.warning("⚠️ Los campos 'Nombre Comercial' y 'NIT' son obligatorios.")
             
     st.markdown("---")
-    st.subheader("📋 Directorio Oficial de Almacenes Afiliados")
+    st.subheader("📋 Directorio Oficial de Almacenes Aliados")
     
     df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios", ttl=0)
     
