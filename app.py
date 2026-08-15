@@ -1316,9 +1316,10 @@ elif opcion == "8. Gestión de Usuarios":
     st.caption("Módulo Exclusivo Administrativo • Control de Cuentas y Reglas")
     st.markdown("---")
 
-    tab_listar, tab_agregar, tab_param, tab_eliminar = st.tabs([
+    tab_listar, tab_agregar, tab_editar, tab_param, tab_eliminar = st.tabs([
         "📋 Usuarios Registrados",
         "➕ Agregar Usuario",
+        "✏️ Modificar Usuario",
         "⚙️ Parámetros del Sistema",
         "🗑️ Eliminar Usuario",
     ])
@@ -1396,9 +1397,9 @@ elif opcion == "8. Gestión de Usuarios":
               with conn.session as s:
                 s.execute(
                     text("""
-                                    INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado)
-                                    VALUES (:doc, :nom, :rol, :pin, :com)
-                                """),
+                        INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado)
+                        VALUES (:doc, :nom, :rol, :pin, :com)
+                    """),
                     {
                         "doc": u_doc.strip(),
                         "nom": u_nom.strip(),
@@ -1414,6 +1415,94 @@ elif opcion == "8. Gestión de Usuarios":
               st.error("❌ Ya existe un usuario registrado con ese documento.")
             except Exception as e:
               st.error(f"Error al guardar usuario: {e}")
+
+    with tab_editar:
+      st.subheader("✏️ Modificar Datos de Usuario")
+
+      try:
+        df_edit_u = conn.query("SELECT documento, nombre FROM usuarios", ttl=0)
+        if df_edit_u.empty:
+          st.info("No hay usuarios disponibles para editar.")
+        else:
+          opciones_u = [f"{row['documento']} - {row['nombre']}" for _, row in df_edit_u.iterrows()]
+          u_seleccionado = st.selectbox("Seleccione el Usuario a Modificar", opciones_u)
+          doc_edit = u_seleccionado.split(" - ")[0]
+
+          # Consultar datos actuales del usuario
+          df_curr = conn.query(
+              "SELECT * FROM usuarios WHERE documento = :doc",
+              params={"doc": doc_edit},
+              ttl=0,
+          )
+
+          if not df_curr.empty:
+            curr_data = df_curr.iloc[0].to_dict()
+
+            df_com_opt = conn.query("SELECT nombre FROM comercios", ttl=0)
+            lista_comercios = (
+                ["N/A - Administrador"] + df_com_opt["nombre"].tolist()
+                if not df_com_opt.empty
+                else ["N/A - Administrador"]
+            )
+
+            idx_com = (
+                lista_comercios.index(curr_data["comercio_asignado"])
+                if curr_data.get("comercio_asignado") in lista_comercios
+                else 0
+            )
+
+            roles_disponibles = ["Comercio Aliado", "Administrador", "FUNDADOR (Administrador)"]
+            idx_rol = (
+                roles_disponibles.index(curr_data["rol"])
+                if curr_data.get("rol") in roles_disponibles
+                else 0
+            )
+
+            with st.form("form_editar_usuario_m8"):
+              col_e1, col_e2 = st.columns(2)
+
+              with col_e1:
+                e_nom = st.text_input("Nombre Completo *", value=curr_data.get("nombre", ""))
+                e_com = st.selectbox("Asignar a Comercio Aliado", lista_comercios, index=idx_com)
+
+              with col_e2:
+                e_rol = st.selectbox("Rol del Usuario *", roles_disponibles, index=idx_rol)
+                e_pin = st.text_input(
+                    "PIN de Acceso (Numérico) *",
+                    type="password",
+                    value=curr_data.get("pin", ""),
+                    max_chars=6,
+                )
+
+              btn_actualizar = st.form_submit_button("💾 Actualizar Usuario")
+
+              if btn_actualizar:
+                if not e_nom.strip() or not e_pin.strip():
+                  st.warning("⚠️ Completa todos los campos obligatorios.")
+                else:
+                  try:
+                    with conn.session as s:
+                      s.execute(
+                          text("""
+                              UPDATE usuarios 
+                              SET nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :com
+                              WHERE documento = :doc
+                          """),
+                          {
+                              "nom": e_nom.strip(),
+                              "rol": e_rol,
+                              "pin": e_pin.strip(),
+                              "com": e_com,
+                              "doc": doc_edit,
+                          },
+                      )
+                      s.commit()
+                    st.success(f"✅ Usuario **{e_nom}** actualizado correctamente.")
+                    st.rerun()
+                  except Exception as e:
+                    st.error(f"Error al actualizar usuario: {e}")
+      except Exception as e:
+        st.error(f"Error al cargar información para edición: {e}")
 
     with tab_param:
       st.subheader("⚙️ Configuración Global de Políticas y Parámetros")
