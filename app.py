@@ -285,7 +285,11 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación y Registro de Nuevo Cliente")
     st.markdown("Sistema automatizado de scoring crediticio basado en ingresos declarados.")
-    st.info("💡 **Política de Crédito:** Ingresos $\le$ \$1.000.000 COP reciben un cupo base de \$80.000 COP. Ingresos superiores reciben un cupo equivalente al 20%. Todos los campos son obligatorios.")
+    
+    # Mostrar el mensaje de política de crédito ÚNICAMENTE si es Administrador
+    if es_admin:
+        st.info("💡 **Política de Crédito:** Ingresos $\le$ \$1.000.000 COP reciben un cupo base de \$80.000 COP. Ingresos superiores reciben un cupo equivalente al 20%. Todos los campos son obligatorios.")
+    
     st.markdown("---")
     
     col_e1, col_e2 = st.columns(2, gap="large")
@@ -324,7 +328,6 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     
     st.markdown("---")
     
-    # Validar que todos los campos obligatorios estén llenos correctamente
     campos_completos = (
         c_cedula.strip() != "" and 
         c_nombre.strip() != "" and 
@@ -342,7 +345,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
                 s.execute(text("""
                     INSERT INTO clientes (cedula, nombre, celular, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
                     VALUES (:ced, :nom, :cel, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
-                ​"""), {
+                """), {
                     "ced": c_cedula, 
                     "nom": c_nombre, 
                     "cel": c_celular, 
@@ -359,7 +362,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         except IntegrityError:
             st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
         except Exception as e:
-            st.error(f"Error de base de datos: {e} (Asegúrate de haber añadido la columna 'direccion' en la tabla 'clientes' de Supabase).")
+            st.error(f"Error de base de datos: {e}")
 
 # --- MÓDULO 3: REGISTRO DE PAGOS (SOLO ADMIN) ---
 elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
