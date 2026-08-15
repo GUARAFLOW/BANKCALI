@@ -67,21 +67,44 @@ if not st.session_state["autenticado"]:
 
       if btn_login:
         try:
-          # Consulta directa usando la sesión nativa de SQLAlchemy
           with conn.session as session:
-            res = session.execute(
-                text(
-                    "SELECT * FROM usuarios WHERE usuario = :u AND password ="
-                    " :p"
+            # Inspección dinámica de columnas de la tabla usuarios
+            sample = session.execute(
+                text("SELECT * FROM usuarios LIMIT 1")
+            ).mappings()
+            columnas = list(sample.keys()) if sample.keys() else []
+
+            # Detección inteligente del nombre de columna para usuario y contraseña
+            col_usr = next(
+                (
+                    c
+                    for c in columnas
+                    if c.lower() in ["usuario", "username", "usr", "login"]
                 ),
-                {"u": user_input.strip(), "p": pass_input.strip()},
+                columnas[1] if len(columnas) > 1 else "usuario",
+            )
+            col_pwd = next(
+                (
+                    c
+                    for c in columnas
+                    if c.lower()
+                    in ["password", "contrasena", "clave", "pass"]
+                ),
+                columnas[2] if len(columnas) > 2 else "password",
+            )
+
+            sql_str = f'SELECT * FROM usuarios WHERE "{col_usr}" = :u AND "{col_pwd}" = :p'
+            res = session.execute(
+                text(sql_str), {"u": user_input.strip(), "p": pass_input.strip()}
             ).mappings().all()
 
           if len(res) > 0:
             usr_data = res[0]
             st.session_state["autenticado"] = True
-            st.session_state["usuario"] = usr_data["usuario"]
-            st.session_state["rol"] = usr_data["rol"]
+            st.session_state["usuario"] = usr_data.get(
+                col_usr, user_input.strip()
+            )
+            st.session_state["rol"] = usr_data.get("rol", "ADMINISTRADOR")
             st.session_state["comercio"] = (
                 usr_data.get("comercio_asociado", "") or ""
             )
