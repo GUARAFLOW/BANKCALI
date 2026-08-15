@@ -640,8 +640,69 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         color: #111;">
         
         <div style="text-align: center;">
-            <img src="{logo_comercio_b64}" style="max-height: 50px; margin-bottom: 8px;" /><br>
-            <h3 style="margin: 0; color: #0d233a;">{nombre_comercio}</h3>
+            # --- OBTENCIÓN SEGURA DEL LOGO Y DATOS DEL TICKET ---
+    logo_comercio_b64 = ""
+    try:
+      df_logo = conn.query(
+          "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
+          params={"nom": comercio_seleccionado},
+          ttl=0,
+      )
+      if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+        logo_comercio_b64 = df_logo.iloc[0]["logo_base64"]
+    except Exception:
+      logo_comercio_b64 = ""
+
+    img_logo_html = (
+        f'<img src="{logo_comercio_b64}" style="max-height: 50px;'
+        ' margin-bottom: 8px;" /><br>'
+        if logo_comercio_b64
+        else ""
+    )
+
+    # 1. Estilos CSS para ocultar la interfaz Streamlit al imprimir
+    st.markdown("""
+    <style>
+    @media print {
+        [data-testid="stSidebar"], 
+        header, 
+        footer, 
+        .stButton, 
+        iframe {
+            display: none !important;
+        }
+        body {
+            background: white !important;
+        }
+        .ticket-pos-box {
+            width: 100% !important;
+            max-width: 320px !important;
+            margin: 0 auto !important;
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            padding: 10px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # 2. Renderizado del Ticket HTML
+    st.markdown(f"""
+    <div class="ticket-pos-box" style="
+        border: 2px dashed #d3ad69; 
+        border-radius: 10px; 
+        padding: 20px; 
+        background-color: #fffdf5; 
+        max-width: 380px; 
+        margin: 0 auto; 
+        font-family: monospace; 
+        color: #111;">
+        
+        <div style="text-align: center;">
+            {img_logo_html}
+            <h3 style="margin: 0; color: #0d233a;">{comercio_seleccionado}</h3>
             <p style="margin: 4px 0; font-size: 12px;">
                 Financiado por <b>BANKCALI</b><br>
                 Puerto Rico, Caquetá<br>
@@ -650,8 +711,8 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         </div>
         <hr style="border: none; border-top: 1px dashed #666;">
         <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-            <b>N° Crédito:</b> {num_credito}<br>
-            <b>Fecha:</b> {fecha_actual}<br>
+            <b>N° Crédito:</b> {id_credito_gen}<br>
+            <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br>
             <b>Cliente:</b> {nombre_cliente}<br>
             <b>Cédula:</b> {cedula_cliente}
         </p>
@@ -672,7 +733,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
     st.write("")
 
-    # 3. Botón de Impresión con JavaScript
+    # 3. Botón de Impresión en Javascript
     components.html("""
         <script>
         function ejecutarImpresion() {
