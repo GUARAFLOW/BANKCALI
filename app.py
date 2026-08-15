@@ -3,7 +3,7 @@ import sys
 import streamlit as st
 from sqlalchemy import text
 
-# Importaciones limpias directamente desde la carpeta modulos
+# Importaciones limpias desde la carpeta modulos
 from modulos.clientes import render_gestion_clientes
 from modulos.cobranzas import render_control_cartera
 from modulos.comercios import render_gestion_comercios
@@ -66,22 +66,28 @@ if not st.session_state["autenticado"]:
       btn_login = st.form_submit_button("Ingresar", use_container_width=True)
 
       if btn_login:
-        df_user = conn.query(
-            "SELECT * FROM usuarios WHERE usuario = :u AND password = :p",
-            params={"u": user_input.strip(), "p": pass_input.strip()},
-            ttl=0,
-        )
+        try:
+          # Consulta corregida usando text() para binding de parámetros
+          df_user = conn.query(
+              text(
+                  "SELECT * FROM usuarios WHERE usuario = :u AND password = :p"
+              ),
+              params={"u": user_input.strip(), "p": pass_input.strip()},
+              ttl=0,
+          )
 
-        if not df_user.empty:
-          usr_data = df_user.iloc[0]
-          st.session_state["autenticado"] = True
-          st.session_state["usuario"] = usr_data["usuario"]
-          st.session_state["rol"] = usr_data["rol"]
-          st.session_state["comercio"] = usr_data.get("comercio_asociado", "")
-          st.success("¡Autenticación exitosa!")
-          st.rerun()
-        else:
-          st.error("❌ Credenciales incorrectas.")
+          if not df_user.empty:
+            usr_data = df_user.iloc[0]
+            st.session_state["autenticado"] = True
+            st.session_state["usuario"] = usr_data["usuario"]
+            st.session_state["rol"] = usr_data["rol"]
+            st.session_state["comercio"] = usr_data.get("comercio_asociado", "")
+            st.success("¡Autenticación exitosa!")
+            st.rerun()
+          else:
+            st.error("❌ Credenciales incorrectas.")
+        except Exception as e:
+          st.error(f"Error al verificar credenciales: {e}")
   st.stop()
 
 # -----------------------------------------------------------------------------
