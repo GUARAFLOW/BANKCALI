@@ -269,30 +269,55 @@ elif opcion == "4. Gestión General de Clientes" and es_admin:
     st.dataframe(df_cli, use_container_width=True)
 
 # --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
+# --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
 elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     st.header("🏢 Administración de Comercios Aliados")
+    st.markdown("Crea y gestiona el directorio de almacenes autorizados para otorgar créditos.")
     
+    st.markdown("##### 📝 Formulario de Registro Comercial")
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        nom_com = st.text_input("Nombre del Almacén / Comercio")
+        nom_com = st.text_input("Nombre Comercial del Almacén *")
+        nit_com = st.text_input("NIT / Cédula del Establecimiento *")
+        prop_com = st.text_input("Nombre del Propietario / Rep. Legal")
     with col_a2:
-        com_com = st.number_input("Porcentaje de Comisión (%)", min_value=0.0, max_value=20.0, step=0.5, value=5.0)
+        tel_com = st.text_input("Teléfono / Celular de Contacto")
+        dir_com = st.text_input("Dirección Física")
+        com_com = st.number_input("Porcentaje de Comisión (%) *", min_value=0.0, max_value=20.0, step=0.5, value=5.0)
         
-    if st.button("Registrar Almacén"):
-        if nom_com:
+    if st.button("Registrar Almacén Oficial"):
+        if nom_com and nit_com:
             try:
+                # Guardado con los nuevos datos de confianza
                 with conn.session as s:
-                    s.execute(text("INSERT INTO comercios (nombre, comision) VALUES (:nombre, :comision)"), {"nombre": nom_com, "comision": com_com})
+                    s.execute(text("""
+                        INSERT INTO comercios (nombre, comision, nit, propietario, telefono, direccion) 
+                        VALUES (:nombre, :comision, :nit, :propietario, :telefono, :direccion)
+                    """), {
+                        "nombre": nom_com, 
+                        "comision": com_com,
+                        "nit": nit_com,
+                        "propietario": prop_com,
+                        "telefono": tel_com,
+                        "direccion": dir_com
+                    })
                     s.commit()
-                st.success(f"✅ Almacén '{nom_com}' guardado con {com_com}% de comisión.")
+                st.success(f"✅ Almacén '{nom_com}' (NIT: {nit_com}) registrado correctamente en el sistema central.")
             except IntegrityError:
-                st.error("❌ Ese comercio ya está registrado.")
+                st.error("❌ Ese comercio ya se encuentra registrado en la base de datos.")
             except Exception as e:
-                st.error(f"Error: {e}")
-                
-    st.subheader("📋 Almacenes Afiliados")
-    df_com_all = conn.query("SELECT * FROM comercios")
-    st.dataframe(df_com_all, use_container_width=True)
+                st.error(f"Error de conexión: {e}")
+        else:
+            st.warning("⚠️ Los campos 'Nombre Comercial' y 'NIT' son obligatorios.")
+            
+    st.markdown("---")
+    st.subheader("📋 Directorio Oficial de Almacenes Afiliados")
+    df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios")
+    
+    if not df_com_all.empty:
+        st.dataframe(df_com_all, use_container_width=True, hide_index=True)
+    else:
+        st.info("Aún no hay comercios registrados con el nuevo formato.")
 
 # --- MÓDULO 6: PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ---
 elif opcion == "6. Panel General de Administración" and es_admin:
