@@ -598,9 +598,10 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           del st.session_state["otp_actual"]
         else:
           st.error("❌ Código OTP incorrecto.")
-          # =============================================================================
-    # GENERACIÓN Y MUESTRA DEL TICKET POS
-    # =============================================================================
+         
+        # =============================================================================
+        # GENERACIÓN Y MUESTRA DEL TICKET POS
+        # =============================================================================
 
     # 1. Validación de Logo y Fecha
     logo_html = ""
