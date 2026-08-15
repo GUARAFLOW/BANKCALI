@@ -39,20 +39,35 @@ st.markdown("""
         div.corporate-banner h2, div.corporate-banner p {
             color: white !important;
         }
+        .terms-box {
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            max-height: 180px;
+            overflow-y: scroll;
+            color: #334155;
+            margin-bottom: 15px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # --- PIN DE ADMINISTRADOR ---
 PIN_ADMIN = "123456789"
 
-# --- FUNCIÓN PARA ENVIAR SMS CON TWILIO ---
-def enviar_sms_twilio(celular_cliente, codigo_otp):
-    celular_limpio = ''.join(filter(str.isdigit, celular_cliente))
+# --- FUNCIÓN MEJORADA PARA ENVIAR SMS CON TWILIO ---
+def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
+    celular_limpio = ''.join(filter(str.isdigit, str(celular_cliente)))
     if not celular_limpio.startswith("57"):
         celular_limpio = "57" + celular_limpio
     
     numero_destino = f"+{celular_limpio}"
-    mensaje_body = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
+    
+    if mensaje_custom:
+        mensaje_body = mensaje_custom
+    else:
+        mensaje_body = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
     
     try:
         account_sid = st.secrets["twilio"]["ACCOUNT_SID"]
@@ -312,19 +327,23 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                         """), {"id": id_credito, "fecha": fecha_hoy, "comercio": comercio_sel, "cedula": cedula, "monto": monto_compra, "cuotas": cuotas, "cuota": valor_cuota, "total": total_pagar, "saldo": total_pagar, "est": "ACTIVO"})
                         s.commit()
                     
+                    # Notificación final al cliente sobre la compra realizada
+                    msg_confirm_compra = f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
+                    enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
+                    
                     st.balloons()
                     st.success(f"🎉 ¡Crédito Aprobado e Inscrito con Éxito! Número de Crédito: **{id_credito}**")
                     del st.session_state["otp_actual"]
                 else:
                     st.error("❌ Código OTP incorrecto. Verifique e intente nuevamente.")
 
-# --- MÓDULO 2: REGISTRO + SCORING (POS) ---
+# --- MÓDULO 2: REGISTRO + SCORING + VERIFICACIÓN OTP & CONTRATO ---
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
-    st.header("📝 Evaluación y Registro de Nuevo Cliente")
-    st.markdown("Sistema automatizado de scoring crediticio basado en ingresos y capacidad de gastos.")
+    st.header("📝 Evaluación, Firma de Acuerdo y Registro de Cliente")
+    st.markdown("Sistema automatizado de scoring crediticio con verificación de identidad por SMS (OTP) y aceptación contractual.")
     
     if es_admin:
-        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos son obligatorios.")
+        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos marcados con (*) son obligatorios.")
     
     st.markdown("---")
     
@@ -375,33 +394,83 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     )
 
     if not campos_completos:
-        st.warning("⚠️ **Atención:** Para poder registrar al cliente, debes completar obligatoriamente todos los campos marcados con asterisco (*) y seleccionar una actividad económica válida.")
+        st.warning("⚠️ **Atención:** Para continuar con la solicitud, debes completar obligatoriamente todos los campos del formulario.")
 
-    if st.button("🚀 Aprobar y Registrar Cliente en el Sistema", use_container_width=True, disabled=not campos_completos):
-        try:
-            with conn.session as s:
-                s.execute(text("""
-                    INSERT INTO clientes (cedula, nombre, celular, correo_electronico, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
-                    VALUES (:ced, :nom, :cel, :correo, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
-                """), {
-                    "ced": c_cedula, 
-                    "nom": c_nombre, 
-                    "cel": c_celular, 
-                    "correo": c_correo,
-                    "dir": c_direccion,
-                    "ocu": c_ocupacion, 
-                    "ing": c_ingresos, 
-                    "gas": c_gastos, 
-                    "c_apr": cupo_sugerido, 
-                    "c_dis": cupo_sugerido
-                })
-                s.commit()
-            st.balloons()
-            st.success(f"🎉 Cliente **{c_nombre}** registrado de forma exitosa con un cupo asignado de **${cupo_sugerido:,.0f} COP**.")
-        except IntegrityError:
-            st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
-        except Exception as e:
-            st.error(f"Error de base de datos: {e}")
+    elif cupo_sugerido <= 0:
+        st.error("❌ El scoring crediticio no aprobó cupo para el cliente. No es posible generar el contrato de crédito.")
+
+    else:
+        # --- SECCIÓN DE ACUERDO COMERCIAL Y TÉRMINOS LEGALES ---
+        st.subheader("📄 Acuerdo Comercial y Términos del Crédito Rotativo")
+        
+        st.markdown(f"""
+        <div class="terms-box">
+            <h4>CONTRATO DE LÍNEA DE CRÉDITO ROTATIVO Y AUTORIZACIÓN DE FIRMA DIGITAL</h4>
+            <p><strong>Partes:</strong> BankCali (Operador Financiero Puerto Rico, Caquetá) y el Cliente titular de la Cédula No. <strong>{c_cedula}</strong> ({c_nombre}).</p>
+            <p><strong>1. OBJETO:</strong> Por medio del presente acuerdo, BankCali otorga al CLIENTE una línea de Crédito Rotativo con un cupo aprobado de <strong>${cupo_sugerido:,.0f} COP</strong> para ser utilizado exclusivamente en comercios aliados autorizados del municipio de Puerto Rico, Caquetá.</p>
+            <p><strong>2. USO Y AMORTIZACIÓN:</strong> El cliente podrá realizar compras contra su cupo y diferir el pago en cuotas quincenales (2 a 8 cuotas). Cada cuota cancelada liberará cupo disponible para futuras compras.</p>
+            <p><strong>3. TASAS Y COSTOS:</strong> Las operaciones devengarán una tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y una tarifa por concepto de Aval e Inscripción del 10% sobre la compra.</p>
+            <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS:</strong> El CLIENTE autoriza expresamente el envío de notificaciones de cobranza, mensajes transaccionales y códigos de seguridad vía SMS al número móvil <strong>{c_celular}</strong>. La validación mediante el código único OTP enviado por SMS constituye firma electrónica válida conforme a la Ley 527 de 1999.</p>
+            <p><strong>5. PAGARÉ EN BLANCO Y CARTA DE INSTRUCCIONES:</strong> El cliente faculta a BankCali a diligenciar el pagaré adjunto en caso de mora en el pago de dos o más cuotas quincenales consecutivas.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        acepta_terminos = st.checkbox(f"☑️ Confirmo que el cliente {c_nombre} ha sido informado, ha leído y ACEPTA los Términos del Acuerdo Comercial y la Autorización de Datos.")
+
+        st.markdown("---")
+        st.subheader("📲 Verificación y Notificación por SMS (Firma Digital)")
+
+        if st.button("📱 Enviar Código OTP de Solicitud de Crédito al Cliente", use_container_width=True, disabled=not acepta_terminos):
+            otp_registro = random.randint(1000, 9999)
+            st.session_state["otp_registro_actual"] = otp_registro
+            
+            msg_solicitud = f"BankCali: Su codigo OTP para autorizar la apertura de Credito Rotativo por ${cupo_sugerido:,.0f} COP es: {otp_registro}. Al entregarlo acepta los terminos del contrato."
+            exito_sms, resultado = enviar_sms_twilio(c_celular, mensaje_custom=msg_solicitud)
+            
+            if exito_sms:
+                st.success(f"📱 ¡Notificación y OTP de solicitud enviada con éxito vía SMS al celular {c_celular}!")
+            else:
+                st.warning(f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. El Código OTP de registro generado es **{otp_registro}**")
+
+        if "otp_registro_actual" in st.session_state and acepta_terminos:
+            st.markdown("#### 🔑 Confirmación de Autorización del Cliente")
+            otp_ingresado_reg = st.text_input("Ingrese el Código OTP de 4 dígitos suministrado por el cliente")
+            
+            if st.button("✅ Validar OTP, Activar Crédito y Registrar Cliente", use_container_width=True):
+                if str(otp_ingresado_reg) == str(st.session_state["otp_registro_actual"]):
+                    try:
+                        with conn.session as s:
+                            s.execute(text("""
+                                INSERT INTO clientes (cedula, nombre, celular, correo_electronico, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
+                                VALUES (:ced, :nom, :cel, :correo, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
+                            """), {
+                                "ced": c_cedula, 
+                                "nom": c_nombre, 
+                                "cel": c_celular, 
+                                "correo": c_correo,
+                                "dir": c_direccion,
+                                "ocu": c_ocupacion, 
+                                "ing": c_ingresos, 
+                                "gas": c_gastos, 
+                                "c_apr": cupo_sugerido, 
+                                "c_dis": cupo_sugerido
+                            })
+                            s.commit()
+                        
+                        # SMS AUTOMÁTICO DE NOTIFICACIÓN DE BIENVENIDA Y ACTIVACIÓN DE CRÉDITO
+                        msg_bienvenida = f"BankCali: Felicidades {c_nombre}, tu solicitud de Credito Rotativo ha sido APROBADA y ACTIVADA con un cupo de ${cupo_sugerido:,.0f} COP. Gracias por confiar en nosotros."
+                        enviar_sms_twilio(c_celular, mensaje_custom=msg_bienvenida)
+
+                        st.balloons()
+                        st.success(f"🎉 ¡Crédito Rotativo Activado! Cliente **{c_nombre}** registrado de forma exitosa con cupo de **${cupo_sugerido:,.0f} COP**. Se ha enviado un SMS de notificación confirmando la apertura.")
+                        del st.session_state["otp_registro_actual"]
+                        
+                    except IntegrityError:
+                        st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
+                    except Exception as e:
+                        st.error(f"Error de base de datos: {e}")
+                else:
+                    st.error("❌ Código OTP incorrecto. Verifique con el cliente e intente nuevamente.")
 
 # --- MÓDULO 3: REGISTRO DE PAGOS (SOLO ADMIN) ---
 elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
@@ -412,7 +481,7 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
     id_credito_buscar = st.text_input("Ingrese Número de Crédito (Ej: CR-12345) o Cédula del Cliente")
     if id_credito_buscar:
         df_sol = conn.query("""
-            SELECT s.id, s.fecha, s.comercio, c.nombre, s.cedula_cliente, s.valor_cuota, s.saldo_pendiente, s.estado 
+            SELECT s.id, s.fecha, s.comercio, c.nombre, s.cedula_cliente, c.celular, s.valor_cuota, s.saldo_pendiente, s.estado 
             FROM solicitudes s
             JOIN clientes c ON s.cedula_cliente = c.cedula
             WHERE s.id = :termino OR s.cedula_cliente = :termino
@@ -421,13 +490,14 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
         if df_sol.empty:
             st.warning("⚠️ No se encontraron créditos activos asociados a esa búsqueda.")
         else:
-            st.dataframe(df_sol, use_container_width=True, hide_index=True)
+            st.dataframe(df_sol[['id', 'fecha', 'comercio', 'nombre', 'cedula_cliente', 'valor_cuota', 'saldo_pendiente', 'estado']], use_container_width=True, hide_index=True)
             
             credito_sel = st.selectbox("Seleccione el ID de Crédito a Abonar", df_sol['id'].tolist())
             fila_credito = df_sol[df_sol['id'] == credito_sel].iloc[0]
             
             saldo_act = float(fila_credito['saldo_pendiente'])
             vlr_cuota = float(fila_credito['valor_cuota'])
+            celular_cli = fila_credito['celular']
             
             st.markdown("---")
             col_p1, col_p2 = st.columns(2)
@@ -449,7 +519,11 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
                     s.execute(text("UPDATE clientes SET cupo_disponible = cupo_disponible + :m WHERE cedula = :ced"), {"m": monto_abono, "ced": fila_credito['cedula_cliente']})
                     s.commit()
                 
-                st.success(f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo saldo del crédito: **${nuevo_saldo:,.0f} COP**.")
+                # Notificación SMS de Recibo de Pago
+                msg_pago = f"BankCali: Hemos recibido tu abono de ${monto_abono:,.0f} COP al credito {credito_sel}. Nuevo saldo: ${nuevo_saldo:,.0f} COP. Tu cupo ha sido liberado."
+                enviar_sms_twilio(celular_cli, mensaje_custom=msg_pago)
+                
+                st.success(f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo saldo del crédito: **${nuevo_saldo:,.0f} COP**. SMS de comprobante enviado al cliente.")
 
 # --- MÓDULO 4: GESTIÓN DE CLIENTES (SOLO ADMIN) ---
 elif opcion == "4. Gestión General de Clientes" and es_admin:
