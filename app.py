@@ -1,15 +1,16 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import random
 import requests
 from datetime import datetime
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 # Configuración de página
 st.set_page_config(page_title="Crédito Puerto Rico", layout="wide")
 
 # --- PIN DE ADMINISTRADOR ---
-PIN_ADMIN = "1234"  # Puedes cambiar este PIN por el que tú prefieras
+PIN_ADMIN = "123456789"  # Puedes cambiar este PIN por el que tú prefieras
 
 # --- FUNCIÓN PARA ENVIAR SMS GRATIS (TEXTBELT) ---
 def enviar_sms_gratis_textbelt(celular_cliente, codigo_otp):
@@ -42,19 +43,13 @@ def evaluar_riesgo_y_cupo(ingresos):
         
     return cupo_final, "APROBADO", f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo_final:,.0f} COP."
 
-# --- CONEXIÓN A BASE DE DATOS PERSISTENTE ---
-conn = sqlite3.connect('creditos_puerto_rico.db', check_same_thread=False)
-cursor = conn.cursor()
-
-# Crear tablas si no existen
-cursor.execute("CREATE TABLE IF NOT EXISTS comercios (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT UNIQUE, comision REAL)")
-cursor.execute("CREATE TABLE IF NOT EXISTS clientes (cedula TEXT PRIMARY KEY, nombre TEXT, celular TEXT, ocupacion TEXT, ingresos REAL, gastos REAL, cupo_aprobado REAL, cupo_disponible REAL)")
-cursor.execute("CREATE TABLE IF NOT EXISTS solicitudes (id TEXT PRIMARY KEY, fecha TEXT, comercio TEXT, cedula_cliente TEXT, monto_compra REAL, cuotas INTEGER, valor_cuota REAL, total_pagar REAL, saldo_pendiente REAL, estado TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS pagos (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, id_credito TEXT, monto_pagado REAL)")
-conn.commit()
+# --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
+conn = st.connection("supabase", type="sql")
 
 # --- TÍTULO PRINCIPAL ---
-st.title("💳 CREDITOS ROTATIVOS BANKCALI")
+st.title("💳 Plataforma de Crédito Rotativo - Puerto Rico (Caquetá)")
+# (Si en el futuro quieres intentar poner la imagen de nuevo, quita el '#' de la siguiente línea)
+# st.image("logo.png", use_container_width=True)
 
 # --- CONTROL DE PERMISOS / ROLES EN BARRA LATERAL ---
 st.sidebar.title("🔐 Control de Acceso")
@@ -90,7 +85,7 @@ opcion = st.sidebar.selectbox("Menú de Navegación", menu_opciones)
 if opcion == "1. Simular / Solicitar Crédito (POS)":
     st.header("🏪 Módulo de Punto de Venta (Comercio Aliado)")
     
-    df_comercios = pd.read_sql_query("SELECT nombre, comision FROM comercios", conn)
+    df_comercios = conn.query("SELECT nombre, comision FROM comercios")
     
     if df_comercios.empty:
         st.warning("⚠️ No hay comercios registrados aún. Comunícate con el Administrador para afiliar tu almacén.")
@@ -104,13 +99,14 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             
             cliente_info = None
             if cedula:
-                cursor.execute("SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = ?", (cedula,))
-                cliente_info = cursor.fetchone()
+                cliente_info_df = conn.query("SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced", params={"ced": cedula})
+                if not cliente_info_df.empty:
+                    cliente_info = cliente_info_df.iloc[0]
                 
-            if cliente_info:
-                nombre_cliente = st.text_input("Nombre Completo del Cliente", value=cliente_info[0])
-                celular = st.text_input("Número de Celular", value=cliente_info[1])
-                st.success(f"💡 **Cupo Disponible del Cliente:** ${cliente_info[2]:,.0f} Pesos")
+            if cliente_info is not None:
+                nombre_cliente = st.text_input("Nombre Completo del Cliente", value=cliente_info['nombre'])
+                celular = st.text_input("Número de Celular", value=cliente_info['celular'])
+                st.success(f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} Pesos")
             else:
                 nombre_cliente = st.text_input("Nombre Completo del Cliente")
                 celular = st.text_input("Número de Celular")
@@ -138,11 +134,11 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         res3.metric("Desembolso al Comercio", f"${desembolso:,.0f} Pesos")
 
         excede_cupo = False
-        if cliente_info and monto_compra > cliente_info[2]:
+        if cliente_info is not None and monto_compra > float(cliente_info['cupo_disponible']):
             st.error("❌ La compra excede el cupo disponible del cliente.")
             excede_cupo = True
 
-        if not excede_cupo and cliente_info and st.button("Generar Código OTP"):
+        if not excede_cupo and cliente_info is not None and st.button("Generar Código OTP"):
             if nombre_cliente and cedula and celular:
                 otp = random.randint(1000, 9999)
                 st.session_state["otp_actual"] = otp
@@ -163,13 +159,16 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                     id_credito = f"CR-{random.randint(10000, 99999)}"
                     fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
-                    cursor.execute("UPDATE clientes SET cupo_disponible = cupo_disponible - ? WHERE cedula = ?", 
-                                   (monto_compra, cedula))
+                    with conn.session as s:
+                        # 1. Descontar cupo
+                        s.execute(text("UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"), {"monto": monto_compra, "cedula": cedula})
+                        # 2. Registrar solicitud
+                        s.execute(text("""
+                            INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
+                            VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
+                        """), {"id": id_credito, "fecha": fecha_hoy, "comercio": comercio_sel, "cedula": cedula, "monto": monto_compra, "cuotas": cuotas, "cuota": valor_cuota, "total": total_pagar, "saldo": total_pagar, "est": "ACTIVO"})
+                        s.commit()
                     
-                    cursor.execute("INSERT INTO solicitudes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                   (id_credito, fecha_hoy, comercio_sel, cedula, monto_compra, cuotas, valor_cuota, total_pagar, total_pagar, "ACTIVO"))
-                    
-                    conn.commit()
                     st.balloons()
                     st.success(f"🎉 ¡Crédito Aprobado! Número de Crédito: **{id_credito}**")
                     del st.session_state["otp_actual"]
@@ -209,13 +208,18 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     if st.button("Aprobar y Registrar Cliente"):
         if c_cedula and c_nombre and c_celular:
             try:
-                cursor.execute("INSERT INTO clientes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                               (c_cedula, c_nombre, c_celular, c_ocupacion, c_ingresos, c_gastos, cupo_sugerido, cupo_sugerido))
-                conn.commit()
+                with conn.session as s:
+                    s.execute(text("""
+                        INSERT INTO clientes (cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
+                        VALUES (:ced, :nom, :cel, :ocu, :ing, :gas, :c_apr, :c_dis)
+                    """), {"ced": c_cedula, "nom": c_nombre, "cel": c_celular, "ocu": c_ocupacion, "ing": c_ingresos, "gas": c_gastos, "c_apr": cupo_sugerido, "c_dis": cupo_sugerido})
+                    s.commit()
                 st.balloons()
                 st.success(f"🎉 Cliente **{c_nombre}** registrado exitosamente con un cupo de **${cupo_sugerido:,.0f} Pesos**.")
-            except sqlite3.IntegrityError:
+            except IntegrityError:
                 st.error("❌ Ya existe un cliente registrado con ese número de cédula.")
+            except Exception as e:
+                st.error(f"Error de base de datos: {e}")
         else:
             st.error("Por favor completa los campos básicos (Cédula, Nombre, Celular).")
 
@@ -225,12 +229,12 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
     
     id_credito_buscar = st.text_input("Ingrese Número de Crédito o Cédula del Cliente")
     if id_credito_buscar:
-        df_sol = pd.read_sql_query("""
+        df_sol = conn.query("""
             SELECT s.id, s.fecha, s.comercio, c.nombre, s.cedula_cliente, s.valor_cuota, s.saldo_pendiente, s.estado 
             FROM solicitudes s
             JOIN clientes c ON s.cedula_cliente = c.cedula
-            WHERE s.id = ? OR s.cedula_cliente = ?
-        """, conn, params=(id_credito_buscar, id_credito_buscar))
+            WHERE s.id = :termino OR s.cedula_cliente = :termino
+        """, params={"termino": id_credito_buscar})
         
         if df_sol.empty:
             st.warning("No se encontraron créditos activos con esa búsqueda.")
@@ -240,33 +244,28 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
             credito_sel = st.selectbox("Seleccione el Crédito a Abonar", df_sol['id'].tolist())
             fila_credito = df_sol[df_sol['id'] == credito_sel].iloc[0]
             
-            saldo_act = fila_credito['saldo_pendiente']
-            vlr_cuota = fila_credito['valor_cuota']
+            saldo_act = float(fila_credito['saldo_pendiente'])
+            vlr_cuota = float(fila_credito['valor_cuota'])
             
-            monto_abono = st.number_input("Monto a Abonar ($ COP)", min_value=1000.0, max_value=float(saldo_act), value=float(min(vlr_cuota, saldo_act)))
+            monto_abono = st.number_input("Monto a Abonar ($ COP)", min_value=1000.0, max_value=saldo_act, value=float(min(vlr_cuota, saldo_act)))
             
             if st.button("Registrar Pago"):
                 fecha_pago = datetime.now().strftime("%Y-%m-%d %H:%M")
-                
-                cursor.execute("INSERT INTO pagos (fecha, id_credito, monto_pagado) VALUES (?, ?, ?)", 
-                               (fecha_pago, credito_sel, monto_abono))
-                
                 nuevo_saldo = saldo_act - monto_abono
                 nuevo_estado = "CANCELADO" if nuevo_saldo <= 0 else "ACTIVO"
                 
-                cursor.execute("UPDATE solicitudes SET saldo_pendiente = ?, estado = ? WHERE id = ?", 
-                               (nuevo_saldo, nuevo_estado, credito_sel))
+                with conn.session as s:
+                    s.execute(text("INSERT INTO pagos (fecha, id_credito, monto_pagado) VALUES (:f, :id_c, :m)"), {"f": fecha_pago, "id_c": credito_sel, "m": monto_abono})
+                    s.execute(text("UPDATE solicitudes SET saldo_pendiente = :ns, estado = :ne WHERE id = :id_c"), {"ns": nuevo_saldo, "ne": nuevo_estado, "id_c": credito_sel})
+                    s.execute(text("UPDATE clientes SET cupo_disponible = cupo_disponible + :m WHERE cedula = :ced"), {"m": monto_abono, "ced": fila_credito['cedula_cliente']})
+                    s.commit()
                 
-                cursor.execute("UPDATE clientes SET cupo_disponible = cupo_disponible + ? WHERE cedula = ?", 
-                               (monto_abono, fila_credito['cedula_cliente']))
-                
-                conn.commit()
                 st.success(f"✅ Pago de ${monto_abono:,.0f} Pesos registrado con éxito. Nuevo Saldo: ${nuevo_saldo:,.0f} Pesos")
 
 # --- MÓDULO 4: GESTIÓN DE CLIENTES (SOLO ADMIN) ---
 elif opcion == "4. Gestión General de Clientes" and es_admin:
     st.header("👥 Lista e Historial General de Clientes")
-    df_cli = pd.read_sql_query("SELECT cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes", conn)
+    df_cli = conn.query("SELECT cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
     st.dataframe(df_cli, use_container_width=True)
 
 # --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
@@ -282,22 +281,25 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     if st.button("Registrar Almacén"):
         if nom_com:
             try:
-                cursor.execute("INSERT INTO comercios (nombre, comision) VALUES (?, ?)", (nom_com, com_com))
-                conn.commit()
+                with conn.session as s:
+                    s.execute(text("INSERT INTO comercios (nombre, comision) VALUES (:nombre, :comision)"), {"nombre": nom_com, "comision": com_com})
+                    s.commit()
                 st.success(f"✅ Almacén '{nom_com}' guardado con {com_com}% de comisión.")
-            except sqlite3.IntegrityError:
-                st.error("Ese comercio ya está registrado.")
+            except IntegrityError:
+                st.error("❌ Ese comercio ya está registrado.")
+            except Exception as e:
+                st.error(f"Error: {e}")
                 
     st.subheader("📋 Almacenes Afiliados")
-    df_com_all = pd.read_sql_query("SELECT * FROM comercios", conn)
+    df_com_all = conn.query("SELECT * FROM comercios")
     st.dataframe(df_com_all, use_container_width=True)
 
 # --- MÓDULO 6: PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ---
 elif opcion == "6. Panel General de Administración" and es_admin:
     st.header("📈 Métricas Generales del Negocio")
     
-    df_sol_all = pd.read_sql_query("SELECT * FROM solicitudes", conn)
-    df_pag_all = pd.read_sql_query("SELECT * FROM pagos", conn)
+    df_sol_all = conn.query("SELECT * FROM solicitudes")
+    df_pag_all = conn.query("SELECT * FROM pagos")
     
     if df_sol_all.empty:
         st.info("No hay transacciones registradas.")
