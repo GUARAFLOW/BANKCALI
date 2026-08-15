@@ -1,26 +1,15 @@
-import os
-import sys
-
-# Localizar automáticamente la carpeta exacta donde están los módulos
-DIR_BASE = os.path.dirname(os.path.abspath(__file__))
-for root, dirs, files in os.walk(DIR_BASE):
-  if "database.py" in files:
-    if root not in sys.path:
-      sys.path.insert(0, root)
-    break
-
 import streamlit as st
 from sqlalchemy import text
 
-# Importaciones directas de los módulos encontrados
-from clientes import render_gestion_clientes
-from cobranzas import render_control_cartera
-from comercios import render_gestion_comercios
-from dashboard import render_dashboard
-from database import conn
-from pagos import render_registro_pagos
-from simulador import render_aprobacion_creditos, render_simulador
-from usuarios import render_gestion_usuarios
+# Importar módulos independientes desde la carpeta modulos
+from modulos.clientes import render_gestion_clientes
+from modulos.cobranzas import render_control_cartera
+from modulos.comercios import render_gestion_comercios
+from modulos.database import conn
+from modulos.dashboard import render_dashboard
+from modulos.pagos import render_registro_pagos
+from modulos.simulador import render_aprobacion_creditos, render_simulador
+from modulos.usuarios import render_gestion_usuarios
 
 # Configuración general de la aplicación
 st.set_page_config(
