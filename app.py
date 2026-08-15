@@ -312,7 +312,7 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
             
     st.markdown("---")
     st.subheader("📋 Directorio Oficial de Almacenes Afiliados")
-    df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios")
+    df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios", ttl=0)
     
     if not df_com_all.empty:
         st.dataframe(df_com_all, use_container_width=True, hide_index=True)
