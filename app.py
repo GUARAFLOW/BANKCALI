@@ -600,71 +600,117 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           st.error("❌ Código OTP incorrecto.")
          
         # =============================================================================
-    # GENERACIÓN DE TICKET POS (PRIORIDAD ADMINISTRADOR Y BÚSQUEDA DE LOGO)
+    # GENERACIÓN Y MUESTRA DEL TICKET POS (RUST BUSTER DETECTOR DE LOGO Y COMERCIO)
     # =============================================================================
 
-    # 1. Detección limpia del comercio (Prioriza la elección del Administrador)
+    # 1. Búsqueda exhaustiva del comercio en session_state y variables locales
     comercio_nom = None
 
-    # Evalúa variables locales del selector/formulario en la ejecución actual
-    for v in ["comercio_seleccionado", "comercio_aliado", "comercio_actual", "comercio"]:
-        if v in locals() and locals()[v]:
-            comercio_nom = locals()[v]
-            break
+    # Inspecciona todas las llaves de session_state buscando coincidencias de comercio/tienda
+    for key in list(st.session_state.keys()):
+        if any(
+            k in str(key).lower()
+            for k in ["comercio", "tienda", "aliado", "store"]
+        ):
+            val = st.session_state[key]
+            if (
+                val
+                and isinstance(val, str)
+                and val.strip() not in ["Comercio Aliado", "None", ""]
+            ):
+                comercio_nom = val.strip()
+                break
 
-    # Si no se definió localmente, consulta en session_state priorizando la selección del Admin
+    # Si no se encontró en session_state, busca en variables locales de la ejecución
     if not comercio_nom:
-        comercio_nom = (
-            st.session_state.get("comercio_seleccionado") or
-            st.session_state.get("comercio_aliado") or
-            st.session_state.get("tienda") or
-            st.session_state.get("comercio_usuario") or
-            "Comercio Aliado"
-        )
+        for var_name in [
+            "comercio_seleccionado",
+            "comercio_aliado",
+            "comercio_actual",
+            "comercio",
+            "tienda",
+        ]:
+            if var_name in locals() and locals()[var_name]:
+                val = str(locals()[var_name]).strip()
+                if val and val != "Comercio Aliado":
+                    comercio_nom = val
+                    break
 
-    # 2. Consulta del logo y formateo de imagen Base64 en la BD
+    # 2. Búsqueda del logo en BD (con rescate al primer comercio registrado si no detecta nombre)
     logo_html = ""
     try:
+      if comercio_nom and comercio_nom != "Comercio Aliado":
         df_logo = conn.query(
             "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nom))",
             params={"nom": str(comercio_nom)},
-            ttl=0
+            ttl=0,
         )
-        
-        # Búsqueda de respaldo si hay diferencias menores en el texto
         if df_logo.empty:
-            df_logo = conn.query(
-                "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(nombre) LIKE LOWER(:nom)",
-                params={"nom": f"%{comercio_nom}%"},
-                ttl=0
-            )
+          df_logo = conn.query(
+              "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(nombre) LIKE LOWER(:nom)",
+              params={"nom": f"%{comercio_nom}%"},
+              ttl=0,
+          )
+      else:
+        # Consulta de respaldo: Trae el primer comercio registrado que tenga logo cargado
+        df_logo = conn.query(
+            "SELECT nombre, logo_base64 FROM comercios WHERE logo_base64 IS NOT NULL AND logo_base64 != '' LIMIT 1",
+            ttl=0,
+        )
 
-        if not df_logo.empty:
-            comercio_nom = df_logo.iloc[0]["nombre"]
-            raw_b64 = df_logo.iloc[0]["logo_base64"]
-            
-            if pd.notnull(raw_b64) and str(raw_b64).strip() not in ["", "None", "nan"]:
-                str_b64 = str(raw_b64).strip()
-                if not str_b64.startswith("data:image"):
-                    src_img = f"data:image/png;base64,{str_b64}"
-                else:
-                    src_img = str_b64
-                logo_html = f'<img src="{src_img}" style="max-height: 60px; max-width: 200px; margin-bottom: 8px;" /><br>'
+      if not df_logo.empty:
+        comercio_nom = df_logo.iloc[0]["nombre"]
+        raw_b64 = df_logo.iloc[0]["logo_base64"]
+
+        if pd.notnull(raw_b64) and str(raw_b64).strip() not in ["", "None", "nan"]:
+          str_b64 = str(raw_b64).strip()
+          if not str_b64.startswith("data:image"):
+            src_img = f"data:image/png;base64,{str_b64}"
+          else:
+            src_img = str_b64
+          logo_html = f'<img src="{src_img}" style="max-height: 60px; max-width: 200px; margin-bottom: 8px;" /><br>'
     except Exception:
-        pass
+      pass
 
-    # 3. Recopilación de datos del crédito
-    id_cred_str = st.session_state.get("id_credito_gen") or locals().get("id_credito_gen") or locals().get("num_credito") or "CR-00000"
-    cliente_nom = st.session_state.get("nombre_cliente") or locals().get("nombre_cliente") or "Cliente"
-    cliente_ced = st.session_state.get("cedula_cliente") or locals().get("cedula_cliente") or "N/A"
-    monto_val = st.session_state.get("monto_compra") or locals().get("monto_compra") or 0
-    cuotas_val = st.session_state.get("num_cuotas") or locals().get("num_cuotas") or 1
-    cuota_val = st.session_state.get("valor_cuota") or locals().get("valor_cuota") or 0
-    total_val = st.session_state.get("total_pagar") or locals().get("total_pagar") or 0
+    if not comercio_nom:
+      comercio_nom = "Comercio Aliado"
+
+    # 3. Recopilación de datos del crédito y cliente
+    id_cred_str = (
+        st.session_state.get("id_credito_gen")
+        or locals().get("id_credito_gen")
+        or locals().get("num_credito")
+        or "CR-00000"
+    )
+    cliente_nom = (
+        st.session_state.get("nombre_cliente")
+        or locals().get("nombre_cliente")
+        or "Cliente"
+    )
+    cliente_ced = (
+        st.session_state.get("cedula_cliente")
+        or locals().get("cedula_cliente")
+        or "N/A"
+    )
+    monto_val = (
+        st.session_state.get("monto_compra")
+        or locals().get("monto_compra")
+        or 0
+    )
+    cuotas_val = (
+        st.session_state.get("num_cuotas") or locals().get("num_cuotas") or 1
+    )
+    cuota_val = (
+        st.session_state.get("valor_cuota") or locals().get("valor_cuota") or 0
+    )
+    total_val = (
+        st.session_state.get("total_pagar") or locals().get("total_pagar") or 0
+    )
     fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # 4. Estilos CSS de impresión
-    st.markdown("""
+    st.markdown(
+        """
 <style>
 @page { size: auto; margin: 0mm; }
 @media print {
@@ -686,9 +732,11 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     }
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
 
-    # 5. Renderizado HTML del comprobante
+    # 5. Renderizado HTML del ticket
     ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
 <div style="text-align: center;">
 {logo_html}
