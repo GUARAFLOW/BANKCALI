@@ -74,6 +74,7 @@ if rol_usuario == "🔑 Administrador":
             "4. Gestión General de Clientes", 
             "5. Gestión de Almacenes Aliados",
             "6. Panel General de Administración"
+            "7. Gestión de Usuarios"
         ])
     elif pin_ingresado != "":
         st.sidebar.error("❌ PIN Incorrecto")
@@ -363,3 +364,103 @@ elif opcion == "6. Panel General de Administración" and es_admin:
         
         st.subheader("💵 Historial de Abonos / Recaudos")
         st.dataframe(df_pag_all, use_container_width=True)
+        
+        # --- MÓDULO 7: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
+elif opcion == "7. Gestión de Usuarios" and es_admin:
+    st.header("👥 Administración de Usuarios del Sistema")
+    st.markdown("Crea, modifica o elimina los accesos al sistema.")
+
+# Consultar usuarios actuales en tiempo real
+    try:
+        df_usuarios = conn.query("SELECT id, documento, nombre, rol, pin FROM usuarios", ttl=0)
+    except Exception as e:
+        st.error("Error al cargar usuarios. Asegúrate de haber creado la tabla en Supabase.")
+        df_usuarios = None
+
+    if df_usuarios is not None:
+        # Dividimos la pantalla en 3 pestañas para que quede súper profesional
+        tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
+
+        # --- PESTAÑA 1: AGREGAR ---
+        with tab1:
+            st.subheader("Registrar Nuevo Acceso")
+            col1, col2 = st.columns(2)
+            with col1:
+                nuevo_doc = st.text_input("Documento de Identidad (Cédula/NIT)")
+                nuevo_nom = st.text_input("Nombre Completo o Razón Social")
+            with col2:
+                nuevo_rol = st.selectbox("Rol del Usuario", ["Comercio Aliado", "Administrador"])
+                nuevo_pin = st.text_input("PIN de Acceso (Contraseña)", type="password")
+
+            if st.button("Guardar Nuevo Usuario"):
+                if nuevo_doc and nuevo_nom and nuevo_pin:
+                    try:
+                        with conn.session as s:
+                            s.execute(text("""
+                                INSERT INTO usuarios (documento, nombre, rol, pin) 
+                                VALUES (:doc, :nom, :rol, :pin)
+                            """), {"doc": nuevo_doc, "nom": nuevo_nom, "rol": nuevo_rol, "pin": nuevo_pin})
+                            s.commit()
+                        st.success("✅ Usuario creado con éxito.")
+                        st.rerun()
+                    except IntegrityError:
+                        st.error("❌ Ya existe un usuario registrado con ese documento.")
+                else:
+                    st.warning("⚠️ Debes completar todos los campos.")
+
+        # --- PESTAÑA 2: MODIFICAR ---
+        with tab2:
+            st.subheader("Actualizar Datos de Usuario")
+            if not df_usuarios.empty:
+                opciones_mod = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
+                id_mod = st.selectbox("Selecciona el usuario a modificar:", options=list(opciones_mod.keys()), format_func=lambda x: opciones_mod[x])
+                
+                usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0]
+                
+                col3, col4 = st.columns(2)
+                with col3:
+                    mod_doc = st.text_input("Documento", value=usr_actual['documento'])
+                    mod_nom = st.text_input("Nombre", value=usr_actual['nombre'])
+                with col4:
+                    roles = ["Comercio Aliado", "Administrador"]
+                    idx_rol = roles.index(usr_actual['rol']) if usr_actual['rol'] in roles else 0
+                    mod_rol = st.selectbox("Nuevo Rol", roles, index=idx_rol)
+                    mod_pin = st.text_input("Cambiar PIN (Dejar igual si no cambia)", value=usr_actual['pin'], type="password")
+
+                if st.button("💾 Guardar Cambios"):
+                    with conn.session as s:
+                        s.execute(text("""
+                            UPDATE usuarios 
+                            SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin 
+                            WHERE id = :id
+                        """), {"doc": mod_doc, "nom": mod_nom, "rol": mod_rol, "pin": mod_pin, "id": id_mod})
+                        s.commit()
+                    st.success("✅ Datos actualizados correctamente.")
+                    st.rerun()
+            else:
+                st.info("Aún no hay usuarios para modificar.")
+
+        # --- PESTAÑA 3: ELIMINAR ---
+        with tab3:
+            st.subheader("Borrar Acceso del Sistema")
+            if not df_usuarios.empty:
+                opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " - " + df_usuarios['documento'].astype(str)))
+                id_del = st.selectbox("Selecciona el usuario que deseas eliminar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
+                
+                if st.button("❌ Borrar Usuario Definitivamente", type="primary"):
+                    with conn.session as s:
+                        s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
+                        s.commit()
+                    st.success("✅ Usuario eliminado permanentemente.")
+                    st.rerun()
+            else:
+                st.info("Aún no hay usuarios para eliminar.")
+
+        st.markdown("---")
+        st.subheader("📋 Lista Actual de Usuarios")
+        if not df_usuarios.empty:
+            # Mostramos la tabla SIN el PIN por seguridad
+            st.dataframe(df_usuarios[['documento', 'nombre', 'rol']], use_container_width=True, hide_index=True)
+    
+
+   
