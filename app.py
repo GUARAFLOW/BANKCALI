@@ -603,62 +603,89 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     # GENERACIÓN Y MUESTRA DEL TICKET POS
     # =============================================================================
 
-    # 1. Recuperación segura de variables
+    # 1. Búsqueda de variables en session_state y entorno local
     comercio_nom = (
-        locals().get("comercio_seleccionado")
+        st.session_state.get("comercio_seleccionado")
+        or st.session_state.get("comercio_aliado")
+        or locals().get("comercio_seleccionado")
         or locals().get("comercio_aliado")
         or locals().get("comercio")
         or "Comercio Aliado"
     )
+
     id_cred_str = (
-        locals().get("id_credito_gen")
+        st.session_state.get("id_credito_gen")
+        or locals().get("id_credito_gen")
         or locals().get("num_credito")
         or "CR-00000"
     )
-    cliente_nom = locals().get("nombre_cliente") or "Cliente"
-    cliente_ced = locals().get("cedula_cliente") or "N/A"
-    monto_val = locals().get("monto_compra") or 0
-    cuotas_val = locals().get("num_cuotas") or 1
-    cuota_val = locals().get("valor_cuota") or 0
-    total_val = locals().get("total_pagar") or 0
+
+    cliente_nom = (
+        st.session_state.get("nombre_cliente")
+        or locals().get("nombre_cliente")
+        or "Cliente"
+    )
+    cliente_ced = (
+        st.session_state.get("cedula_cliente")
+        or locals().get("cedula_cliente")
+        or "N/A"
+    )
+
+    monto_val = (
+        st.session_state.get("monto_compra")
+        or locals().get("monto_compra")
+        or 0
+    )
+    cuotas_val = (
+        st.session_state.get("num_cuotas") or locals().get("num_cuotas") or 1
+    )
+    cuota_val = (
+        st.session_state.get("valor_cuota") or locals().get("valor_cuota") or 0
+    )
+    total_val = (
+        st.session_state.get("total_pagar") or locals().get("total_pagar") or 0
+    )
     fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 2. Obtención del logo
+    # 2. Consulta de Logo en Base de Datos
     logo_html = ""
     try:
-        df_logo = conn.query(
-            "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
-            params={"nom": comercio_nom},
-            ttl=0,
-        )
-        if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-            logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
+      df_logo = conn.query(
+          "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
+          params={"nom": comercio_nom},
+          ttl=0,
+      )
+      if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+        logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 55px; margin-bottom: 6px;" /><br>'
     except Exception:
-        logo_html = ""
+      logo_html = ""
 
-    # 3. Estilos CSS de impresión
-    # 1. Estilos CSS de impresión corregidos (Técnica de Visibilidad Directa)
+    # 3. CSS de Impresión Optimizado (Fuerza la impresión en la Página 1)
     st.markdown(
         """
     <style>
+    @page {
+        size: auto;
+        margin: 0mm;
+    }
     @media print {
-        /* Oculta visualmente todo el contenedor de Streamlit */
+        html, body {
+            height: 100% !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
+        }
         body * {
             visibility: hidden !important;
         }
-        
-        /* Muestra únicamente la caja del ticket y todos sus elementos internos */
         .ticket-pos-box, .ticket-pos-box * {
             visibility: visible !important;
         }
-        
-        /* Posiciona el ticket al inicio de la página impresa */
         .ticket-pos-box {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            max-width: 360px !important;
+            position: fixed !important;
+            left: 50% !important;
+            top: 20px !important;
+            transform: translateX(-50%) !important;
+            width: 300px !important;
             margin: 0 !important;
             padding: 15px !important;
             border: 1px dashed #000 !important;
@@ -672,7 +699,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         unsafe_allow_html=True,
     )
 
-    # 2. Renderizado del Ticket HTML
+    # 4. Renderizado del Comprobante
     ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
 <div style="text-align: center;">
 {logo_html}
@@ -708,7 +735,7 @@ Firma Digital Verificada vía OTP SMS<br>
 
     st.write("")
 
-    # 3. Botón de Impresión
+    # 5. Botón de Impresión
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
