@@ -55,7 +55,6 @@ def enviar_sms_twilio(celular_cliente, codigo_otp):
     mensaje_body = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
     
     try:
-        # Obtener credenciales desde Streamlit Secrets
         account_sid = st.secrets["twilio"]["ACCOUNT_SID"]
         auth_token = st.secrets["twilio"]["AUTH_TOKEN"]
         twilio_number = st.secrets["twilio"]["PHONE_NUMBER"]
@@ -75,7 +74,6 @@ def enviar_sms_twilio(celular_cliente, codigo_otp):
 def evaluar_riesgo_y_cupo(ingresos, gastos):
     pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
     
-    # RANGO 1: 100,000 a 1,000,000
     if 100000 <= ingresos <= 1000000:
         if pct_gastos <= 0.35:
             cupo = 80000
@@ -84,7 +82,6 @@ def evaluar_riesgo_y_cupo(ingresos, gastos):
             cupo = 0
             estado = "RECHAZADO"
             
-    # RANGO 2: 1,000,001 a 2,500,000
     elif 1000001 <= ingresos <= 2500000:
         margen_disponible = ingresos - gastos
         if margen_disponible < 0:
@@ -94,7 +91,6 @@ def evaluar_riesgo_y_cupo(ingresos, gastos):
             cupo = round((margen_disponible * 0.25) / 10000) * 10000
             estado = "APROBADO" if cupo > 0 else "RECHAZADO"
             
-    # RANGO 3: > 2,500,001
     else:
         cupo_base = ingresos * 0.30
         if pct_gastos > 0.50:
@@ -152,7 +148,6 @@ if not st.session_state.autenticado:
             st.sidebar.warning("⚠️ Completa ambos campos.")
             
     st.sidebar.warning("🔒 **Sistema Protegido**. Inicia sesión para habilitar las operaciones.")
-    
     st.sidebar.markdown("---")
     st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Desarrollado para Gestión Comercial<br>© 2026</p>", unsafe_allow_html=True)
     
@@ -232,7 +227,6 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         with col1:
             st.markdown("##### 👤 Datos del Cliente")
             
-            # --- SEGURIDAD: CONTROL DE COMERCIO ---
             if st.session_state.rol == "Comercio Aliado" and st.session_state.comercio_asignado and st.session_state.comercio_asignado != "N/A - Administrador":
                 st.info(f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**")
                 comercio_sel = st.session_state.comercio_asignado
@@ -340,6 +334,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         c_cedula = st.text_input("Número de Cédula *")
         c_nombre = st.text_input("Nombre Completo *")
         c_celular = st.text_input("Número de Celular *")
+        c_correo = st.text_input("Correo Electrónico *", placeholder="cliente@ejemplo.com")
         c_direccion = st.text_input("Dirección de Residencia *")
         
     with col_e2:
@@ -374,6 +369,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         c_cedula.strip() != "" and 
         c_nombre.strip() != "" and 
         c_celular.strip() != "" and 
+        c_correo.strip() != "" and
         c_direccion.strip() != "" and 
         c_ocupacion != "Seleccione una actividad..."
     )
@@ -385,12 +381,13 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         try:
             with conn.session as s:
                 s.execute(text("""
-                    INSERT INTO clientes (cedula, nombre, celular, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
-                    VALUES (:ced, :nom, :cel, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
+                    INSERT INTO clientes (cedula, nombre, celular, correo_electronico, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
+                    VALUES (:ced, :nom, :cel, :correo, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
                 """), {
                     "ced": c_cedula, 
                     "nom": c_nombre, 
                     "cel": c_celular, 
+                    "correo": c_correo,
                     "dir": c_direccion,
                     "ocu": c_ocupacion, 
                     "ing": c_ingresos, 
@@ -460,7 +457,7 @@ elif opcion == "4. Gestión General de Clientes" and es_admin:
     st.markdown("Visualización completa de la base de datos de clientes registrados y sus cupos actuales.")
     st.markdown("---")
     try:
-        df_cli = conn.query("SELECT cedula, nombre, celular, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
+        df_cli = conn.query("SELECT cedula, nombre, celular, correo_electronico, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
     except Exception:
         df_cli = conn.query("SELECT cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
         
@@ -575,7 +572,6 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
         df_usuarios = None
 
     if df_usuarios is not None:
-        # Extraer lista de comercios para el dropdown
         df_comercios_nombres = conn.query("SELECT nombre FROM comercios", ttl=0)
         lista_comercios_opciones = ["N/A - Administrador"] + (df_comercios_nombres['nombre'].tolist() if not df_comercios_nombres.empty else [])
         
@@ -645,46 +641,38 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
 
                 st.markdown("---")
                 if st.button("💾 Guardar Cambios de Usuario", use_container_width=True):
-                    with conn.session as s:
-                        s.execute(text("""
-                            UPDATE usuarios 
-                            SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
-                            WHERE id = :id
-                        """), {
-                            "doc": mod_doc, 
-                            "nom": mod_nom, 
-                            "rol": mod_rol, 
-                            "pin": mod_pin, 
-                            "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
-                            "id": id_mod
-                        })
-                        s.commit()
-                    st.success("✅ Datos actualizados correctamente.")
-                    st.rerun()
-            else:
-                st.info("Aún no hay usuarios disponibles para modificar.")
+                    try:
+                        with conn.session as s:
+                            s.execute(text("""
+                                UPDATE usuarios 
+                                SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
+                                WHERE id = :id
+                            """), {
+                                "doc": mod_doc,
+                                "nom": mod_nom,
+                                "rol": mod_rol,
+                                "pin": mod_pin,
+                                "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
+                                "id": id_mod
+                            })
+                            s.commit()
+                        st.success("✅ Usuario actualizado correctamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al actualizar usuario: {e}")
 
         with tab3:
-            st.subheader("Eliminar Acceso del Sistema")
+            st.subheader("Eliminar Usuario")
             if not df_usuarios.empty:
-                opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " - " + df_usuarios['documento'].astype(str)))
-                id_del = st.selectbox("Selecciona el usuario que deseas revocar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
+                opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
+                id_del = st.selectbox("Selecciona el usuario a eliminar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
                 
-                st.markdown("---")
-                if st.button("❌ Borrar Usuario Definitivamente", type="primary", use_container_width=True):
-                    with conn.session as s:
-                        s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
-                        s.commit()
-                    st.success("✅ Usuario eliminado permanentemente del sistema.")
-                    st.rerun()
-            else:
-                st.info("Aún no hay usuarios disponibles para eliminar.")
-
-        st.markdown("---")
-        st.subheader("📋 Lista Actual de Usuarios Registrados")
-        if not df_usuarios.empty:
-            # Mostrar tabla limpia sin la contraseña
-            columnas_mostrar = ['documento', 'nombre', 'rol', 'comercio_asignado']
-            # Evitar error si la columna no existe temporalmente
-            columnas_validas = [col for col in columnas_mostrar if col in df_usuarios.columns]
-            st.dataframe(df_usuarios[columnas_validas], use_container_width=True, hide_index=True)
+                if st.button("🗑️ Eliminar Usuario Definitivamente", type="primary"):
+                    try:
+                        with conn.session as s:
+                            s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
+                            s.commit()
+                        st.success("✅ Usuario eliminado correctamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al eliminar usuario: {e}")
