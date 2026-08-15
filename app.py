@@ -5,7 +5,6 @@ import requests
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-import base64
 
 # Configuración de página
 st.set_page_config(
@@ -15,18 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- LOGOTIPO EN BASE64 (INCRUSTADO DIRECTAMENTE) ---
-# Si prefieres usar una imagen propia en texto, aquí la cargamos. 
-# Como alternativa robusta para la nube, usamos el contenedor HTML con imagen integrada:
-LOGO_BASE64 = """
-<div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
-    <div style="background: white; padding: 10px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-        <h1 style="color: #1E3A8A; margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing: 2px;">BankCali</h1>
-    </div>
-</div>
-"""
-
-# --- ESTILOS CSS PERSONALIZADOS PARA EL BANNER Y DISEÑO ---
+# --- ESTILOS CSS Y COMPONENTES CORPORATIVOS ---
 st.markdown("""
     <style>
         .main {
@@ -39,13 +27,34 @@ st.markdown("""
             color: #1E3A8A;
         }
         .corporate-banner {
-            padding: 30px 20px;
+            padding: 35px 20px;
             background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
             color: white;
             border-radius: 12px;
             margin-bottom: 25px;
             text-align: center;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .brand-logo {
+            display: inline-block;
+            background: white;
+            color: #1E3A8A;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            margin-bottom: 15px;
+        }
+        .sidebar-brand {
+            text-align: center;
+            padding: 15px;
+            background: #1E3A8A;
+            border-radius: 8px;
+            color: white;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
     </style>
 """, unsafe_allow_html=True)
@@ -87,11 +96,11 @@ def evaluar_riesgo_y_cupo(ingresos):
 # --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
 
-# --- IMAGEN Y ENCABEZADO CORPORATIVO EN BARRA LATERAL ---
+# --- ENCABEZADO CORPORATIVO EN BARRA LATERAL ---
 st.sidebar.markdown("""
-    <div style="text-align: center; padding: 10px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 10px;">
-        <h3 style="color: white; margin: 0;">BankCali</h3>
-        <p style="font-size: 0.8rem; margin: 0; opacity: 0.8;">Red Comercial Autorizada</p>
+    <div class="sidebar-brand">
+        <h2 style="color: white; margin: 0; font-size: 1.5rem;">BankCali</h2>
+        <p style="font-size: 0.75rem; margin: 0; opacity: 0.85;">Red Comercial Autorizada</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -169,8 +178,8 @@ st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8re
 # --- ENCABEZADO CORPORATIVO CON LOGOTIPO INSTITUCIONAL ---
 st.markdown("""
     <div class="corporate-banner">
-        """ + LOGO_BASE64 + """
-        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
+        <div class="brand-logo">BankCali</div>
+        <h2 style="color: white; margin-top: 5px;">Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
