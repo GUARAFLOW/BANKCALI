@@ -1,20 +1,20 @@
 import streamlit as st
 import pandas as pd
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from twilio.rest import Client
 
-# Configuración de página
+# Configuración de la página
 st.set_page_config(
-    page_title="Crédito Puerto Rico | Plataforma Financiera",
+    page_title="BankCali | Plataforma Financiera",
     page_icon="💳",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS ---
+# --- ESTILOS CSS PERSONALIZADOS Y FORMATO TICKET POS ---
 st.markdown("""
     <style>
         .main {
@@ -27,7 +27,7 @@ st.markdown("""
             color: #1E3A8A;
         }
         div.corporate-banner {
-            padding: 30px 20px;
+            padding: 25px 20px;
             background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%) !important;
             color: white !important;
             border-radius: 12px;
@@ -50,13 +50,21 @@ st.markdown("""
             color: #334155;
             margin-bottom: 15px;
         }
+        .pos-ticket {
+            background-color: #fffbeb;
+            border: 1px dashed #d97706;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            color: #1e293b;
+            max-width: 420px;
+            margin: 0 auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- PIN DE ADMINISTRADOR ---
-PIN_ADMIN = "123456789"
-
-# --- FUNCIÓN MEJORADA PARA ENVIAR SMS CON TWILIO ---
+# --- FUNCIÓN DE ENVÍO DE SMS CON TWILIO ---
 def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
     celular_limpio = ''.join(filter(str.isdigit, str(celular_cliente)))
     if not celular_limpio.startswith("57"):
@@ -67,7 +75,7 @@ def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
     if mensaje_custom:
         mensaje_body = mensaje_custom
     else:
-        mensaje_body = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
+        mensaje_body = f"Su codigo OTP para el credito BankCali en Puerto Rico es: {codigo_otp}"
     
     try:
         account_sid = st.secrets["twilio"]["ACCOUNT_SID"]
@@ -85,7 +93,7 @@ def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
         print(f"Error enviando SMS con Twilio: {e}")
         return False, str(e)
 
-# --- NUEVO MOTOR DE EVALUACIÓN CREDITICIA (INGRESOS Y GASTOS) ---
+# --- MOTOR DE EVALUACIÓN CREDITICIA ---
 def evaluar_riesgo_y_cupo(ingresos, gastos):
     pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
     
@@ -120,17 +128,49 @@ def evaluar_riesgo_y_cupo(ingresos, gastos):
     mensaje = f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo:,.0f} COP." if cupo > 0 else "❌ Crédito no aprobado por capacidad de endeudamiento."
     return cupo, estado, mensaje
 
-# --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
+# --- GENERADOR DE TABLA DE AMORTIZACIÓN QUINCENAL ---
+def generar_tabla_amortizacion(monto_compra, num_cuotas, pct_aval=0.10, tasa_interes=0.021):
+    monto_aval = monto_compra * pct_aval
+    subtotal = monto_compra + monto_aval
+    interes_total = subtotal * (tasa_interes / 2) * num_cuotas
+    total_pagar = subtotal + interes_total
+    valor_cuota = total_pagar / num_cuotas
+    
+    capital_por_cuota = monto_compra / num_cuotas
+    aval_por_cuota = monto_aval / num_cuotas
+    interes_por_cuota = interes_total / num_cuotas
+    
+    cronograma = []
+    saldo_restante = total_pagar
+    fecha_base = datetime.now()
+    
+    for i in range(1, num_cuotas + 1):
+        fecha_venc = fecha_base + timedelta(days=15 * i)
+        saldo_restante -= valor_cuota
+        cronograma.append({
+            "N° Cuota": f"Cuota {i}",
+            "Fecha Vencimiento": fecha_venc.strftime("%Y-%m-%d"),
+            "Valor Cuota ($)": round(valor_cuota, 0),
+            "Capital ($)": round(capital_por_cuota, 0),
+            "Aval ($)": round(aval_por_cuota, 0),
+            "Interés ($)": round(interes_por_cuota, 0),
+            "Saldo Restante ($)": round(max(0, saldo_restante), 0)
+        })
+        
+    df_amort = pd.DataFrame(cronograma)
+    return df_amort, total_pagar, valor_cuota, monto_aval, interes_total
+
+# --- CONEXIÓN A BASE DE DATOS SUPABASE ---
 conn = st.connection("supabase", type="sql")
 
-# --- 1. INICIALIZAR SESIÓN ---
+# --- INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.rol = None
     st.session_state.nombre = None
     st.session_state.comercio_asignado = None
 
-# --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
+# --- PANEL DE LOGIN (BARRA LATERAL) ---
 st.sidebar.markdown("""
     <div style="text-align: center; padding: 12px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
         <h3 style="color: white; margin: 0; font-size: 1.3rem;">Datos de Acceso</h3>
@@ -182,7 +222,7 @@ if not st.session_state.autenticado:
             
     st.stop()
 
-# --- 3. SI EL INICIO DE SESIÓN FUE EXITOSO ---
+# --- SESIÓN ACTIVA ---
 st.sidebar.success(f"👤 **Sesión Activa:**\n\n{st.session_state.nombre}\n*({st.session_state.rol})*")
 
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
@@ -194,29 +234,30 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
 
 st.sidebar.markdown("---")
 
+es_admin = (st.session_state.rol == "Administrador")
+
 menu_opciones = [
     "1. Simular / Solicitar Crédito (POS)", 
     "2. Registrar Nuevo Cliente + Scoring de Cupo"
 ]
 
-es_admin = (st.session_state.rol == "Administrador")
-
 if es_admin:
     menu_opciones.extend([
         "3. Registrar Pagos / Abonar Cuotas",
-        "4. Gestión General de Clientes", 
-        "5. Gestión de Almacenes Aliados",
-        "6. Panel General de Administración",
-        "7. Gestión de Usuarios"
+        "4. Control de Cartera y Mora (Cobranzas)",
+        "5. Gestión General de Clientes", 
+        "6. Gestión de Almacenes Aliados",
+        "7. Panel General de Administración",
+        "8. Gestión de Usuarios"
     ])
 
 st.sidebar.markdown("### 🧭 Menú de Navegación")
 opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visibility="collapsed")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
+st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v3.0<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS ---
+# BANNER CORPORATIVO
 st.markdown("""
     <div class="corporate-banner">
         <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
@@ -224,10 +265,10 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- MÓDULO 1: SOLICITUD EN PUNTO DE VENTA (POS) ---
+# --- MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET ---
 if opcion == "1. Simular / Solicitar Crédito (POS)":
     st.header("🏪 Módulo de Punto de Venta (Comercio Aliado)")
-    st.markdown("Realiza simulaciones de crédito rápidas y genera desembolsos seguros con verificación OTP.")
+    st.markdown("Simulación, cronograma de amortización y generación de ticket de venta imprimible.")
     st.markdown("---")
     
     try:
@@ -236,7 +277,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         df_comercios = pd.DataFrame()
     
     if df_comercios.empty:
-        st.warning("⚠️ No hay comercios registrados aún o la tabla está vacía. Ve al módulo de 'Gestión de Almacenes Aliados' para registrar uno.")
+        st.warning("⚠️ No hay comercios registrados aún. Registre uno en 'Gestión de Almacenes Aliados'.")
     else:
         col1, col2 = st.columns(2, gap="large")
         with col1:
@@ -262,34 +303,30 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             if cliente_info is not None:
                 nombre_cliente = st.text_input("Nombre Completo del Cliente", value=cliente_info['nombre'])
                 celular = st.text_input("Número de Celular", value=cliente_info['celular'])
-                st.success(f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} Pesos")
+                st.success(f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP")
             else:
                 nombre_cliente = st.text_input("Nombre Completo del Cliente")
                 celular = st.text_input("Número de Celular")
                 if cedula:
-                    st.warning("⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente' en el menú lateral.")
+                    st.warning("⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente'.")
 
         with col2:
             st.markdown("##### 🛒 Detalles de la Compra")
             monto_compra = st.number_input("Monto de la Compra ($ COP)", min_value=80000, max_value=5000000, step=10000, value=80000)
             cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
             
-            pct_aval = 0.10       
-            tasa_interes = 0.021  
-            
-            monto_aval = monto_compra * pct_aval
-            subtotal = monto_compra + monto_aval
-            interes = subtotal * (tasa_interes / 2) * cuotas
-            total_pagar = subtotal + interes
-            valor_cuota = total_pagar / cuotas
+            df_amort, total_pagar, valor_cuota, monto_aval, interes_total = generar_tabla_amortizacion(monto_compra, cuotas)
             desembolso = monto_compra * (1 - (comercio_comercio / 100))
 
         st.markdown("---")
-        st.subheader("📊 Resumen Financiero de la Operación")
+        st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
         res1, res2, res3 = st.columns(3)
         res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
         res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
-        res3.metric("Desembolso al Comercio", f"${desembolso:,.0f} COP")
+        res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
+
+        with st.expander("📅 Ver Tabla de Amortización Quincenal Completa", expanded=False):
+            st.dataframe(df_amort, use_container_width=True, hide_index=True)
 
         excede_cupo = False
         if cliente_info is not None and monto_compra > float(cliente_info['cupo_disponible']):
@@ -303,17 +340,17 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                 st.session_state["otp_actual"] = otp
                 
                 exito_sms, resultado = enviar_sms_twilio(celular, otp)
-                
                 if exito_sms:
                     st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
                 else:
-                    st.warning(f"⚠️ Alerta (Modo de prueba/respaldo): No se envió el SMS. Código OTP generado es **{otp}**")
+                    st.warning(f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. Código OTP es **{otp}**")
             else:
-                st.error("Por favor completa los datos del cliente.")
+                st.error("Por favor completa todos los datos del cliente.")
 
         if "otp_actual" in st.session_state and not excede_cupo:
             st.markdown("#### 🔑 Verificación de Seguridad")
             otp_ingresado = st.text_input("Ingrese el Código OTP de 4 dígitos enviado al cliente")
+            
             if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
                 if str(otp_ingresado) == str(st.session_state["otp_actual"]):
                     id_credito = f"CR-{random.randint(10000, 99999)}"
@@ -327,23 +364,65 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                         """), {"id": id_credito, "fecha": fecha_hoy, "comercio": comercio_sel, "cedula": cedula, "monto": monto_compra, "cuotas": cuotas, "cuota": valor_cuota, "total": total_pagar, "saldo": total_pagar, "est": "ACTIVO"})
                         s.commit()
                     
-                    # Notificación final al cliente sobre la compra realizada
                     msg_confirm_compra = f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
                     enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
                     
                     st.balloons()
-                    st.success(f"🎉 ¡Crédito Aprobado e Inscrito con Éxito! Número de Crédito: **{id_credito}**")
+                    st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
+                    
+                    # Guardar datos para renderizar Ticket POS
+                    st.session_state["ultimo_ticket"] = {
+                        "id": id_credito,
+                        "fecha": fecha_hoy,
+                        "comercio": comercio_sel,
+                        "cliente": nombre_cliente,
+                        "cedula": cedula,
+                        "monto": monto_compra,
+                        "cuotas": cuotas,
+                        "valor_cuota": valor_cuota,
+                        "total": total_pagar,
+                        "df_amort": df_amort
+                    }
                     del st.session_state["otp_actual"]
                 else:
-                    st.error("❌ Código OTP incorrecto. Verifique e intente nuevamente.")
+                    st.error("❌ Código OTP incorrecto.")
+
+        # MOSTRAR TICKET POS IMPRIMIBLE
+        if "ultimo_ticket" in st.session_state:
+            t = st.session_state["ultimo_ticket"]
+            st.markdown("---")
+            st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
+            
+            ticket_html = f"""
+            <div class="pos-ticket">
+                <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
+                    <h3 style="margin: 0; color: #1E3A8A;">BANKCALI</h3>
+                    <p style="margin: 2px 0; font-size: 0.8rem;">Puerto Rico, Caquetá</p>
+                    <p style="margin: 2px 0; font-size: 0.75rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
+                </div>
+                <p><strong>N° Crédito:</strong> {t['id']}</p>
+                <p><strong>Fecha:</strong> {t['fecha']}</p>
+                <p><strong>Comercio:</strong> {t['comercio']}</p>
+                <p><strong>Cliente:</strong> {t['cliente']}</p>
+                <p><strong>Cédula:</strong> {t['cedula']}</p>
+                <hr style="border: 0.5px dashed #333;">
+                <p><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
+                <p><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
+                <p><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
+                <p><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
+                <hr style="border: 0.5px dashed #333;">
+                <p style="font-size: 0.75rem; text-align: center;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
+            </div>
+            """
+            st.markdown(ticket_html, unsafe_allow_html=True)
 
 # --- MÓDULO 2: REGISTRO + SCORING + VERIFICACIÓN OTP & CONTRATO ---
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación, Firma de Acuerdo y Registro de Cliente")
-    st.markdown("Sistema automatizado de scoring crediticio con verificación de identidad por SMS (OTP) y aceptación contractual.")
+    st.markdown("Sistema automatizado de scoring crediticio con verificación por SMS (OTP) y aceptación contractual.")
     
     if es_admin:
-        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos marcados con (*) son obligatorios.")
+        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben cupo base del 30% ajustado por gastos.")
     
     st.markdown("---")
     
@@ -394,28 +473,26 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     )
 
     if not campos_completos:
-        st.warning("⚠️ **Atención:** Para continuar con la solicitud, debes completar obligatoriamente todos los campos del formulario.")
+        st.warning("⚠️ Completa todos los campos obligatorios para proceder.")
 
     elif cupo_sugerido <= 0:
-        st.error("❌ El scoring crediticio no aprobó cupo para el cliente. No es posible generar el contrato de crédito.")
+        st.error("❌ El scoring crediticio no aprobó cupo para el cliente.")
 
     else:
-        # --- SECCIÓN DE ACUERDO COMERCIAL Y TÉRMINOS LEGALES ---
         st.subheader("📄 Acuerdo Comercial y Términos del Crédito Rotativo")
         
         st.markdown(f"""
         <div class="terms-box">
             <h4>CONTRATO DE LÍNEA DE CRÉDITO ROTATIVO Y AUTORIZACIÓN DE FIRMA DIGITAL</h4>
             <p><strong>Partes:</strong> BankCali (Operador Financiero Puerto Rico, Caquetá) y el Cliente titular de la Cédula No. <strong>{c_cedula}</strong> ({c_nombre}).</p>
-            <p><strong>1. OBJETO:</strong> Por medio del presente acuerdo, BankCali otorga al CLIENTE una línea de Crédito Rotativo con un cupo aprobado de <strong>${cupo_sugerido:,.0f} COP</strong> para ser utilizado exclusivamente en comercios aliados autorizados del municipio de Puerto Rico, Caquetá.</p>
-            <p><strong>2. USO Y AMORTIZACIÓN:</strong> El cliente podrá realizar compras contra su cupo y diferir el pago en cuotas quincenales (2 a 8 cuotas). Cada cuota cancelada liberará cupo disponible para futuras compras.</p>
-            <p><strong>3. TASAS Y COSTOS:</strong> Las operaciones devengarán una tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y una tarifa por concepto de Aval e Inscripción del 10% sobre la compra.</p>
-            <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS:</strong> El CLIENTE autoriza expresamente el envío de notificaciones de cobranza, mensajes transaccionales y códigos de seguridad vía SMS al número móvil <strong>{c_celular}</strong>. La validación mediante el código único OTP enviado por SMS constituye firma electrónica válida conforme a la Ley 527 de 1999.</p>
-            <p><strong>5. PAGARÉ EN BLANCO Y CARTA DE INSTRUCCIONES:</strong> El cliente faculta a BankCali a diligenciar el pagaré adjunto en caso de mora en el pago de dos o más cuotas quincenales consecutivas.</p>
+            <p><strong>1. OBJETO:</strong> BankCali otorga al CLIENTE una línea de Crédito Rotativo con un cupo aprobado de <strong>${cupo_sugerido:,.0f} COP</strong> para ser utilizado exclusivamente en comercios aliados autorizados del municipio de Puerto Rico, Caquetá.</p>
+            <p><strong>2. USO Y AMORTIZACIÓN:</strong> El cliente podrá realizar compras diferidas en cuotas quincenales (2 a 8 cuotas). Cada cuota cancelada liberará cupo disponible.</p>
+            <p><strong>3. TASAS Y COSTOS:</strong> Tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y tarifa de Aval del 10% sobre compra.</p>
+            <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS:</strong> El CLIENTE autoriza el envío de notificaciones y la validación por código OTP enviado al número móvil <strong>{c_celular}</strong> como firma electrónica válida conforme a la Ley 527 de 1999.</p>
         </div>
         """, unsafe_allow_html=True)
 
-        acepta_terminos = st.checkbox(f"☑️ Confirmo que el cliente {c_nombre} ha sido informado, ha leído y ACEPTA los Términos del Acuerdo Comercial y la Autorización de Datos.")
+        acepta_terminos = st.checkbox(f"☑️ Confirmo que el cliente {c_nombre} ha leído y ACEPTA los Términos del Acuerdo Comercial.")
 
         st.markdown("---")
         st.subheader("📲 Verificación y Notificación por SMS (Firma Digital)")
@@ -428,9 +505,9 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
             exito_sms, resultado = enviar_sms_twilio(c_celular, mensaje_custom=msg_solicitud)
             
             if exito_sms:
-                st.success(f"📱 ¡Notificación y OTP de solicitud enviada con éxito vía SMS al celular {c_celular}!")
+                st.success(f"📱 ¡Notificación y OTP de solicitud enviada vía SMS al celular {c_celular}!")
             else:
-                st.warning(f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. El Código OTP de registro generado es **{otp_registro}**")
+                st.warning(f"⚠️ Alerta (Modo respaldo): SMS no enviado. Código OTP es **{otp_registro}**")
 
         if "otp_registro_actual" in st.session_state and acepta_terminos:
             st.markdown("#### 🔑 Confirmación de Autorización del Cliente")
@@ -457,25 +534,24 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
                             })
                             s.commit()
                         
-                        # SMS AUTOMÁTICO DE NOTIFICACIÓN DE BIENVENIDA Y ACTIVACIÓN DE CRÉDITO
-                        msg_bienvenida = f"BankCali: Felicidades {c_nombre}, tu solicitud de Credito Rotativo ha sido APROBADA y ACTIVADA con un cupo de ${cupo_sugerido:,.0f} COP. Gracias por confiar en nosotros."
+                        msg_bienvenida = f"BankCali: Felicidades {c_nombre}, tu solicitud de Credito Rotativo ha sido APROBADA y ACTIVADA por ${cupo_sugerido:,.0f} COP. Gracias por confiar en nosotros."
                         enviar_sms_twilio(c_celular, mensaje_custom=msg_bienvenida)
 
                         st.balloons()
-                        st.success(f"🎉 ¡Crédito Rotativo Activado! Cliente **{c_nombre}** registrado de forma exitosa con cupo de **${cupo_sugerido:,.0f} COP**. Se ha enviado un SMS de notificación confirmando la apertura.")
+                        st.success(f"🎉 ¡Crédito Rotativo Activado! Cliente **{c_nombre}** registrado con cupo de **${cupo_sugerido:,.0f} COP**.")
                         del st.session_state["otp_registro_actual"]
                         
                     except IntegrityError:
-                        st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
+                        st.error("❌ Ya existe un cliente registrado con esa cédula.")
                     except Exception as e:
                         st.error(f"Error de base de datos: {e}")
                 else:
-                    st.error("❌ Código OTP incorrecto. Verifique con el cliente e intente nuevamente.")
+                    st.error("❌ Código OTP incorrecto.")
 
 # --- MÓDULO 3: REGISTRO DE PAGOS (SOLO ADMIN) ---
 elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
     st.header("💵 Módulo de Recaudo y Abono a Cuotas")
-    st.markdown("Gestión de cartera, registro de pagos parciales o totales y liberación automática de cupo.")
+    st.markdown("Registro de abonos, liberación de cupo y envío de recibo por SMS.")
     st.markdown("---")
     
     id_credito_buscar = st.text_input("Ingrese Número de Crédito (Ej: CR-12345) o Cédula del Cliente")
@@ -488,7 +564,7 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
         """, params={"termino": id_credito_buscar})
         
         if df_sol.empty:
-            st.warning("⚠️ No se encontraron créditos activos asociados a esa búsqueda.")
+            st.warning("⚠️ No se encontraron créditos asociados.")
         else:
             st.dataframe(df_sol[['id', 'fecha', 'comercio', 'nombre', 'cedula_cliente', 'valor_cuota', 'saldo_pendiente', 'estado']], use_container_width=True, hide_index=True)
             
@@ -501,12 +577,10 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
             
             st.markdown("---")
             col_p1, col_p2 = st.columns(2)
-            with col_p1:
-                st.info(f"📌 **Saldo Pendiente Actual:** ${saldo_act:,.0f} COP")
-            with col_p2:
-                st.info(f"📌 **Valor Cuota Sugerido:** ${vlr_cuota:,.0f} COP")
+            col_p1.info(f"📌 **Saldo Pendiente Actual:** ${saldo_act:,.0f} COP")
+            col_p2.info(f"📌 **Valor Cuota Sugerido:** ${vlr_cuota:,.0f} COP")
                 
-            monto_abono = st.number_input("Monto del Abono a Registrar ($ COP)", min_value=1000.0, max_value=saldo_act, value=float(min(vlr_cuota, saldo_act)))
+            monto_abono = st.number_input("Monto del Abono ($ COP)", min_value=1000.0, max_value=saldo_act, value=float(min(vlr_cuota, saldo_act)))
             
             if st.button("💾 Registrar Pago Oficial", use_container_width=True):
                 fecha_pago = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -519,16 +593,71 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
                     s.execute(text("UPDATE clientes SET cupo_disponible = cupo_disponible + :m WHERE cedula = :ced"), {"m": monto_abono, "ced": fila_credito['cedula_cliente']})
                     s.commit()
                 
-                # Notificación SMS de Recibo de Pago
-                msg_pago = f"BankCali: Hemos recibido tu abono de ${monto_abono:,.0f} COP al credito {credito_sel}. Nuevo saldo: ${nuevo_saldo:,.0f} COP. Tu cupo ha sido liberado."
+                msg_pago = f"BankCali: Recibimos tu abono de ${monto_abono:,.0f} COP al credito {credito_sel}. Nuevo saldo: ${nuevo_saldo:,.0f} COP. Tu cupo ha sido liberado."
                 enviar_sms_twilio(celular_cli, mensaje_custom=msg_pago)
                 
-                st.success(f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo saldo del crédito: **${nuevo_saldo:,.0f} COP**. SMS de comprobante enviado al cliente.")
+                st.success(f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo saldo: **${nuevo_saldo:,.0f} COP**.")
 
-# --- MÓDULO 4: GESTIÓN DE CLIENTES (SOLO ADMIN) ---
-elif opcion == "4. Gestión General de Clientes" and es_admin:
+# --- MÓDULO 4: CONTROL DE CARTERA VENCIDA Y MORA (COBRANZAS) ---
+elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
+    st.header("⚠️ Panel de Control de Cartera y Gestión de Mora")
+    st.markdown("Seguimiento de cuotas, semáforo de riesgo y recordatorios masivos e individuales por SMS.")
+    st.markdown("---")
+    
+    df_cartera = conn.query("""
+        SELECT s.id, s.fecha, s.comercio, c.nombre, c.cedula, c.celular, s.monto_compra, s.valor_cuota, s.saldo_pendiente, s.estado
+        FROM solicitudes s
+        JOIN clientes c ON s.cedula_cliente = c.cedula
+        WHERE s.estado = 'ACTIVO'
+    """, ttl=0)
+    
+    if df_cartera.empty:
+        st.success("🎉 ¡Excelente! No hay créditos activos o en cartera pendiente actualmente.")
+    else:
+        # Calcular días de antigüedad y estado de mora simulado
+        df_cartera['Fecha_DT'] = pd.to_datetime(df_cartera['fecha'])
+        hoy = datetime.now()
+        df_cartera['Dias_Transcurridos'] = (hoy - df_cartera['Fecha_DT']).dt.days
+        
+        def clasificar_mora(dias):
+            if dias <= 15:
+                return "🟢 Al Día"
+            elif 15 < dias <= 30:
+                return "🟡 Vencimiento Cercano"
+            else:
+                return "🔴 En Mora (>30 días)"
+                
+        df_cartera['Estado_Mora'] = df_cartera['Dias_Transcurridos'].apply(clasificar_mora)
+        
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("Total Créditos Activos", len(df_cartera))
+        col_m2.metric("Cartera en Riesgo / Mora", len(df_cartera[df_cartera['Estado_Mora'] != "🟢 Al Día"]))
+        col_m3.metric("Saldo Total Pendiente", f"${df_cartera['saldo_pendiente'].sum():,.0f} COP")
+        
+        st.markdown("---")
+        st.subheader("📋 Lista de Créditos en Seguimiento")
+        st.dataframe(df_cartera[['id', 'nombre', 'celular', 'comercio', 'valor_cuota', 'saldo_pendiente', 'Dias_Transcurridos', 'Estado_Mora']], use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        st.subheader("📲 Envío de Recordatorios de Pago por SMS")
+        
+        credito_recordatorio = st.selectbox("Seleccione el Crédito para Enviar Recordatorio de Pago", df_cartera['id'].tolist())
+        fila_rec = df_cartera[df_cartera['id'] == credito_recordatorio].iloc[0]
+        
+        msg_recordatorio_default = f"BankCali: Estimado/a {fila_rec['nombre']}, le recordamos que tiene una cuota pendiente de ${fila_rec['valor_cuota']:,.0f} COP de su credito {fila_rec['id']}. Saldo total: ${fila_rec['saldo_pendiente']:,.0f} COP. Por favor acerquese a realizar su pago."
+        
+        txt_mensaje_rec = st.text_area("Mensaje SMS a enviar", value=msg_recordatorio_default, height=100)
+        
+        if st.button("📩 Enviar Recordatorio SMS vía Twilio", use_container_width=True):
+            exito_mora, res_mora = enviar_sms_twilio(fila_rec['celular'], mensaje_custom=txt_mensaje_rec)
+            if exito_mora:
+                st.success(f"✅ Recordatorio de cobro enviado exitosamente al cliente {fila_rec['nombre']} ({fila_rec['celular']}).")
+            else:
+                st.error(f"Error al enviar SMS: {res_mora}")
+
+# --- MÓDULO 5: GESTIÓN DE CLIENTES (SOLO ADMIN) ---
+elif opcion == "5. Gestión General de Clientes" and es_admin:
     st.header("👥 Directorio e Historial General de Clientes")
-    st.markdown("Visualización completa de la base de datos de clientes registrados y sus cupos actuales.")
     st.markdown("---")
     try:
         df_cli = conn.query("SELECT cedula, nombre, celular, correo_electronico, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
@@ -538,24 +667,22 @@ elif opcion == "4. Gestión General de Clientes" and es_admin:
     if not df_cli.empty:
         st.dataframe(df_cli, use_container_width=True, hide_index=True)
     else:
-        st.info("Aún no hay clientes registrados en el sistema.")
+        st.info("Aún no hay clientes registrados.")
 
-# --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
-elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
+# --- MÓDULO 6: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
+elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
     st.header("🏢 Administración de Comercios Aliados")
-    st.markdown("Directorio y control de establecimientos comerciales autorizados en la red.")
     st.markdown("---")
     
-    st.markdown("##### 📝 Formulario de Afiliación Comercial")
     col_a1, col_a2 = st.columns(2, gap="large")
     with col_a1:
-        nom_com = st.text_input("Nombre Comercial del Almacén *")
-        nit_com = st.text_input("NIT / Cédula del Establecimiento *")
-        prop_com = st.text_input("Nombre del Propietario / Rep. Legal")
+        nom_com = st.text_input("Nombre Comercial *")
+        nit_com = st.text_input("NIT / Cédula *")
+        prop_com = st.text_input("Propietario / Rep. Legal")
     with col_a2:
-        tel_com = st.text_input("Teléfono / Celular de Contacto")
-        dir_com = st.text_input("Dirección Física")
-        com_com = st.number_input("Porcentaje de Comisión (%) *", min_value=0.0, max_value=20.0, step=0.5, value=5.0)
+        tel_com = st.text_input("Teléfono")
+        dir_com = st.text_input("Dirección")
+        com_com = st.number_input("Comisión (%) *", min_value=0.0, max_value=20.0, step=0.5, value=5.0)
         
     st.markdown("---")
     if st.button("🏢 Registrar Almacén Oficial", use_container_width=True):
@@ -566,59 +693,33 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
                         INSERT INTO comercios (nombre, comision, nit, propietario, telefono, direccion) 
                         VALUES (:nombre, :comision, :nit, :propietario, :telefono, :direccion)
                     """), {
-                        "nombre": nom_com, 
-                        "comision": com_com,
-                        "nit": nit_com,
-                        "propietario": prop_com,
-                        "telefono": tel_com,
-                        "direccion": dir_com
+                        "nombre": nom_com, "comision": com_com, "nit": nit_com,
+                        "propietario": prop_com, "telefono": tel_com, "direccion": dir_com
                     })
                     s.commit()
-                st.success(f"✅ Almacén '{nom_com}' (NIT: {nit_com}) registrado correctamente en el sistema central.")
+                st.success(f"✅ Almacén '{nom_com}' registrado correctamente.")
             except IntegrityError:
-                st.error("❌ Ese comercio ya se encuentra registrado en la base de datos.")
+                st.error("❌ Comercio ya existente.")
             except Exception as e:
-                st.error(f"Error de conexión: {e}")
+                st.error(f"Error: {e}")
         else:
-            st.warning("⚠️ Los campos 'Nombre Comercial' y 'NIT' son obligatorios.")
+            st.warning("⚠️ Nombre y NIT son obligatorios.")
             
     st.markdown("---")
-    st.subheader("📋 Directorio Oficial de Almacenes Aliados")
-    
     df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios", ttl=0)
-    
     if not df_com_all.empty:
         st.dataframe(df_com_all, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        st.subheader("🗑️ Gestión de Baja de Comercios")
-        
-        opciones_borrar = dict(zip(df_com_all['id'], df_com_all['nombre'] + " (NIT: " + df_com_all['nit'].astype(str) + ")"))
-        id_a_borrar = st.selectbox("Selecciona el comercio que deseas retirar:", options=list(opciones_borrar.keys()), format_func=lambda x: opciones_borrar[x])
-        
-        if st.button("❌ Eliminar Comercio Definitivamente", type="primary"):
-            try:
-                with conn.session as s:
-                    s.execute(text("DELETE FROM comercios WHERE id = :id"), {"id": id_a_borrar})
-                    s.commit()
-                st.success("✅ Comercio eliminado correctamente del sistema.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al eliminar: {e}")
-    else:
-        st.info("Aún no hay comercios registrados en la base de datos.")
 
-# --- MÓDULO 6: PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ---
-elif opcion == "6. Panel General de Administración" and es_admin:
+# --- MÓDULO 7: PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ---
+elif opcion == "7. Panel General de Administración" and es_admin:
     st.header("📈 Panel Ejecutivo y Métricas del Negocio")
-    st.markdown("Resumen financiero consolidado de colocación, cartera y recaudo.")
     st.markdown("---")
     
     df_sol_all = conn.query("SELECT * FROM solicitudes")
     df_pag_all = conn.query("SELECT * FROM pagos")
     
     if df_sol_all.empty:
-        st.info("No hay transacciones registradas todavía.")
+        st.info("No hay transacciones registradas.")
     else:
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Colocado (Ventas)", f"${df_sol_all['monto_compra'].sum():,.0f} COP")
@@ -628,125 +729,91 @@ elif opcion == "6. Panel General de Administración" and es_admin:
         st.markdown("---")
         st.subheader("📑 Historial Consolidado de Créditos")
         st.dataframe(df_sol_all, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        st.subheader("💵 Historial de Abonos / Recaudos")
-        st.dataframe(df_pag_all, use_container_width=True, hide_index=True)
 
-# --- MÓDULO 7: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
-elif opcion == "7. Gestión de Usuarios" and es_admin:
+# --- MÓDULO 8: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
+elif opcion == "8. Gestión de Usuarios" and es_admin:
     st.header("👥 Administración de Usuarios y Accesos")
-    st.markdown("Control de credenciales, roles y permisos para administradores y comercios aliados.")
     st.markdown("---")
 
-    try:
-        df_usuarios = conn.query("SELECT * FROM usuarios", ttl=0)
-    except Exception as e:
-        st.error("Error al cargar usuarios. Asegúrate de haber ejecutado el ALTER TABLE en Supabase.")
-        df_usuarios = None
+    df_usuarios = conn.query("SELECT * FROM usuarios", ttl=0)
+    df_comercios_nombres = conn.query("SELECT nombre FROM comercios", ttl=0)
+    lista_comercios_opciones = ["N/A - Administrador"] + (df_comercios_nombres['nombre'].tolist() if not df_comercios_nombres.empty else [])
+    
+    tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
 
-    if df_usuarios is not None:
-        df_comercios_nombres = conn.query("SELECT nombre FROM comercios", ttl=0)
-        lista_comercios_opciones = ["N/A - Administrador"] + (df_comercios_nombres['nombre'].tolist() if not df_comercios_nombres.empty else [])
-        
-        tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
+    with tab1:
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
+            nuevo_doc = st.text_input("Documento de Identidad")
+            nuevo_nom = st.text_input("Nombre Completo")
+            nuevo_com_asig = st.selectbox("Asignar a Comercio", lista_comercios_opciones)
+        with col2:
+            nuevo_rol = st.selectbox("Rol del Usuario", ["Comercio Aliado", "Administrador"])
+            nuevo_pin = st.text_input("PIN de Acceso", type="password")
 
-        with tab1:
-            st.subheader("Registrar Nuevo Acceso al Sistema")
-            col1, col2 = st.columns(2, gap="large")
-            with col1:
-                nuevo_doc = st.text_input("Documento de Identidad / NIT")
-                nuevo_nom = st.text_input("Nombre Completo o Razón Social")
-                nuevo_com_asig = st.selectbox("Asignar a Comercio (Obligatorio para Aliados)", lista_comercios_opciones)
-            with col2:
-                nuevo_rol = st.selectbox("Rol del Usuario", ["Comercio Aliado", "Administrador"])
-                nuevo_pin = st.text_input("PIN de Acceso (Contraseña)", type="password")
+        st.markdown("---")
+        if st.button("💾 Guardar Nuevo Usuario", use_container_width=True):
+            if nuevo_doc and nuevo_nom and nuevo_pin:
+                try:
+                    with conn.session as s:
+                        s.execute(text("""
+                            INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado) 
+                            VALUES (:doc, :nom, :rol, :pin, :comercio)
+                        """), {
+                            "doc": nuevo_doc, "nom": nuevo_nom, "rol": nuevo_rol, "pin": nuevo_pin,
+                            "comercio": nuevo_com_asig if nuevo_rol == "Comercio Aliado" else "N/A - Administrador"
+                        })
+                        s.commit()
+                    st.success("✅ Usuario creado con éxito.")
+                    st.rerun()
+                except IntegrityError:
+                    st.error("❌ Documento duplicado.")
+            else:
+                st.warning("⚠️ Completa los campos obligatorios.")
 
-            st.markdown("---")
-            if st.button("💾 Guardar Nuevo Usuario", use_container_width=True):
-                if nuevo_doc and nuevo_nom and nuevo_pin:
-                    try:
-                        with conn.session as s:
-                            s.execute(text("""
-                                INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado) 
-                                VALUES (:doc, :nom, :rol, :pin, :comercio)
-                            """), {
-                                "doc": nuevo_doc, 
-                                "nom": nuevo_nom, 
-                                "rol": nuevo_rol, 
-                                "pin": nuevo_pin,
-                                "comercio": nuevo_com_asig if nuevo_rol == "Comercio Aliado" else "N/A - Administrador"
-                            })
-                            s.commit()
-                        st.success("✅ Usuario creado con éxito.")
-                        st.rerun()
-                    except IntegrityError:
-                        st.error("❌ Ya existe un usuario registrado con ese documento.")
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
-                else:
-                    st.warning("⚠️ Debes completar todos los campos obligatorios.")
+    with tab2:
+        if not df_usuarios.empty:
+            opciones_mod = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
+            id_mod = st.selectbox("Selecciona el usuario a modificar:", options=list(opciones_mod.keys()), format_func=lambda x: opciones_mod[x])
+            usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0].to_dict()
+            
+            col3, col4 = st.columns(2, gap="large")
+            with col3:
+                mod_doc = st.text_input("Documento", value=usr_actual['documento'])
+                mod_nom = st.text_input("Nombre", value=usr_actual['nombre'])
+                comercio_actual_bd = usr_actual.get('comercio_asignado', "N/A - Administrador")
+                idx_com = lista_comercios_opciones.index(comercio_actual_bd) if comercio_actual_bd in lista_comercios_opciones else 0
+                mod_comercio = st.selectbox("Modificar Comercio Asignado", lista_comercios_opciones, index=idx_com)
 
-        with tab2:
-            st.subheader("Actualizar Datos o Credenciales de Usuario")
-            if not df_usuarios.empty:
-                opciones_mod = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
-                id_mod = st.selectbox("Selecciona el usuario a modificar:", options=list(opciones_mod.keys()), format_func=lambda x: opciones_mod[x])
-                
-                usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0].to_dict()
-                
-                col3, col4 = st.columns(2, gap="large")
-                with col3:
-                    mod_doc = st.text_input("Documento", value=usr_actual['documento'])
-                    mod_nom = st.text_input("Nombre", value=usr_actual['nombre'])
-                    
-                    comercio_actual_bd = usr_actual.get('comercio_asignado', "N/A - Administrador")
-                    if pd.isna(comercio_actual_bd) or comercio_actual_bd not in lista_comercios_opciones:
-                        comercio_actual_bd = "N/A - Administrador"
-                    idx_com = lista_comercios_opciones.index(comercio_actual_bd)
-                    
-                    mod_comercio = st.selectbox("Modificar Comercio Asignado", lista_comercios_opciones, index=idx_com)
+            with col4:
+                roles = ["Comercio Aliado", "Administrador"]
+                idx_rol = roles.index(usr_actual['rol']) if usr_actual['rol'] in roles else 0
+                mod_rol = st.selectbox("Nuevo Rol", roles, index=idx_rol)
+                mod_pin = st.text_input("Cambiar PIN", value=usr_actual['pin'], type="password")
 
-                with col4:
-                    roles = ["Comercio Aliado", "Administrador"]
-                    idx_rol = roles.index(usr_actual['rol']) if usr_actual['rol'] in roles else 0
-                    mod_rol = st.selectbox("Nuevo Rol", roles, index=idx_rol)
-                    mod_pin = st.text_input("Cambiar PIN (Déjalo igual si no deseas cambiarlo)", value=usr_actual['pin'], type="password")
+            if st.button("💾 Guardar Cambios de Usuario", use_container_width=True):
+                with conn.session as s:
+                    s.execute(text("""
+                        UPDATE usuarios 
+                        SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
+                        WHERE id = :id
+                    """), {
+                        "doc": mod_doc, "nom": mod_nom, "rol": mod_rol, "pin": mod_pin,
+                        "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
+                        "id": id_mod
+                    })
+                    s.commit()
+                st.success("✅ Usuario actualizado correctamente.")
+                st.rerun()
 
-                st.markdown("---")
-                if st.button("💾 Guardar Cambios de Usuario", use_container_width=True):
-                    try:
-                        with conn.session as s:
-                            s.execute(text("""
-                                UPDATE usuarios 
-                                SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
-                                WHERE id = :id
-                            """), {
-                                "doc": mod_doc,
-                                "nom": mod_nom,
-                                "rol": mod_rol,
-                                "pin": mod_pin,
-                                "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
-                                "id": id_mod
-                            })
-                            s.commit()
-                        st.success("✅ Usuario actualizado correctamente.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al actualizar usuario: {e}")
-
-        with tab3:
-            st.subheader("Eliminar Usuario")
-            if not df_usuarios.empty:
-                opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
-                id_del = st.selectbox("Selecciona el usuario a eliminar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
-                
-                if st.button("🗑️ Eliminar Usuario Definitivamente", type="primary"):
-                    try:
-                        with conn.session as s:
-                            s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
-                            s.commit()
-                        st.success("✅ Usuario eliminado correctamente.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al eliminar usuario: {e}")
+    with tab3:
+        if not df_usuarios.empty:
+            opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
+            id_del = st.selectbox("Selecciona el usuario a eliminar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
+            
+            if st.button("🗑️ Eliminar Usuario Definitivamente", type="primary"):
+                with conn.session as s:
+                    s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
+                    s.commit()
+                st.success("✅ Usuario eliminado.")
+                st.rerun()
