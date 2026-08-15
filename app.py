@@ -606,21 +606,21 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
       import streamlit.components.v1 as components
 
-# 1. Estilos CSS para que al imprimir SOLO salga el ticket (oculta sidebar, botones y headers de Streamlit)
-st.markdown("""
-<style>
-@media print {
-    /* Ocultar interfaz de Streamlit */
-    [data-testid="stSidebar"], 
-    header, 
-    footer, 
-    .stButton, 
-    iframe {
+      # 1. Estilos CSS para que al imprimir SOLO salga el ticket (oculta sidebar, botones y headers de Streamlit)
+      st.markdown("""
+      <style>
+      @media print {
+      /* Ocultar interfaz de Streamlit */
+      [data-testid="stSidebar"], 
+      header, 
+      footer, 
+      .stButton, 
+      iframe {
         display: none !important;
     }
     
-    /* Formato para papel térmico POS */
-    body {
+      /* Formato para papel térmico POS */
+      body {
         background: white !important;
     }
     
@@ -638,9 +638,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. Renderizado del Ticket HTML
-st.markdown(f"""
-<div class="ticket-pos-box" style="
+    # 2. Renderizado del Ticket HTML
+    st.markdown(f"""
+    <div class="ticket-pos-box" style="
     border: 2px dashed #d3ad69; 
     border-radius: 10px; 
     padding: 20px; 
