@@ -600,48 +600,60 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           st.error("❌ Código OTP incorrecto.")
          
         # =============================================================================
-    # GENERACIÓN Y MUESTRA DEL TICKET POS (DETECCIÓN AUTOMÁTICA DE TIENDA Y LOGO)
+    # GENERACIÓN DE TICKET POS (PRIORIDAD ADMINISTRADOR Y BÚSQUEDA DE LOGO)
     # =============================================================================
 
-    # 1. Búsqueda de la tienda (captura "LOS MAOS" desde el usuario o desde el admin)
-    comercio_nom = (
-        st.session_state.get("tienda") or
-        st.session_state.get("comercio_usuario") or
-        st.session_state.get("comercio_asignado") or
-        st.session_state.get("comercio_seleccionado") or
-        st.session_state.get("comercio_aliado") or
-        locals().get("comercio_seleccionado") or
-        locals().get("comercio_aliado") or
-        locals().get("comercio_asignado") or
-        locals().get("tienda") or
-        locals().get("comercio")
-    )
+    # 1. Detección limpia del comercio (Prioriza la elección del Administrador)
+    comercio_nom = None
 
-    # 2. Búsqueda del logo en la base de datos coincidiendo con "LOS MAOS"
+    # Evalúa variables locales del selector/formulario en la ejecución actual
+    for v in ["comercio_seleccionado", "comercio_aliado", "comercio_actual", "comercio"]:
+        if v in locals() and locals()[v]:
+            comercio_nom = locals()[v]
+            break
+
+    # Si no se definió localmente, consulta en session_state priorizando la selección del Admin
+    if not comercio_nom:
+        comercio_nom = (
+            st.session_state.get("comercio_seleccionado") or
+            st.session_state.get("comercio_aliado") or
+            st.session_state.get("tienda") or
+            st.session_state.get("comercio_usuario") or
+            "Comercio Aliado"
+        )
+
+    # 2. Consulta del logo y formateo de imagen Base64 en la BD
     logo_html = ""
     try:
-        if comercio_nom:
+        df_logo = conn.query(
+            "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nom))",
+            params={"nom": str(comercio_nom)},
+            ttl=0
+        )
+        
+        # Búsqueda de respaldo si hay diferencias menores en el texto
+        if df_logo.empty:
             df_logo = conn.query(
                 "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(nombre) LIKE LOWER(:nom)",
                 params={"nom": f"%{comercio_nom}%"},
                 ttl=0
             )
-            if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-                comercio_nom = df_logo.iloc[0]["nombre"]
-                raw_b64 = str(df_logo.iloc[0]["logo_base64"]).strip()
-                if raw_b64 and raw_b64 != "None":
-                    if not raw_b64.startswith("data:image"):
-                        src_img = f"data:image/png;base64,{raw_b64}"
-                    else:
-                        src_img = raw_b64
-                    logo_html = f'<img src="{src_img}" style="max-height: 60px; max-width: 200px; margin-bottom: 8px;" /><br>'
+
+        if not df_logo.empty:
+            comercio_nom = df_logo.iloc[0]["nombre"]
+            raw_b64 = df_logo.iloc[0]["logo_base64"]
+            
+            if pd.notnull(raw_b64) and str(raw_b64).strip() not in ["", "None", "nan"]:
+                str_b64 = str(raw_b64).strip()
+                if not str_b64.startswith("data:image"):
+                    src_img = f"data:image/png;base64,{str_b64}"
+                else:
+                    src_img = str_b64
+                logo_html = f'<img src="{src_img}" style="max-height: 60px; max-width: 200px; margin-bottom: 8px;" /><br>'
     except Exception:
         pass
 
-    if not comercio_nom:
-        comercio_nom = "LOS MAOS"
-
-    # 3. Recopilación de variables del crédito y cliente
+    # 3. Recopilación de datos del crédito
     id_cred_str = st.session_state.get("id_credito_gen") or locals().get("id_credito_gen") or locals().get("num_credito") or "CR-00000"
     cliente_nom = st.session_state.get("nombre_cliente") or locals().get("nombre_cliente") or "Cliente"
     cliente_ced = st.session_state.get("cedula_cliente") or locals().get("cedula_cliente") or "N/A"
@@ -676,7 +688,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 </style>
 """, unsafe_allow_html=True)
 
-    # 5. Renderizado HTML del ticket
+    # 5. Renderizado HTML del comprobante
     ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
 <div style="text-align: center;">
 {logo_html}
@@ -711,7 +723,7 @@ Firma Digital Verificada vía OTP SMS<br>
     st.markdown(ticket_html, unsafe_allow_html=True)
     st.write("")
 
-    # 6. Botón de Impresión
+    # 6. Botón ejecutor de impresión
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
