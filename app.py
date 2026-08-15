@@ -604,39 +604,111 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       st.markdown("---")
       st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
 
-      # Renderizar logo del comercio o logo estándar
-      logo_html = ""
-      if t.get("logo_comercio"):
-        logo_html = f'<img src="{t["logo_comercio"]}" style="max-height: 70px; margin-bottom: 8px; border-radius: 4px;" /><br>'
+      import streamlit.components.v1 as components
 
-      ticket_html = textwrap.dedent(f"""
-            <div class="printable-area">
-                <div class="pos-ticket">
-                    <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
-                        {logo_html}
-                        <h3 style="margin: 0; color: #1E3A8A;">{t['comercio'].upper()}</h3>
-                        <p style="margin: 2px 0; font-size: 0.8rem; color: #555;">Financiado por <strong>BANKCALI</strong></p>
-                        <p style="margin: 2px 0; font-size: 0.75rem;">Puerto Rico, Caquetá</p>
-                        <p style="margin: 4px 0 0 0; font-size: 0.8rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
-                    </div>
-                    <p style="margin: 3px 0;"><strong>N° Crédito:</strong> {t['id']}</p>
-                    <p style="margin: 3px 0;"><strong>Fecha:</strong> {t['fecha']}</p>
-                    <p style="margin: 3px 0;"><strong>Cliente:</strong> {t['cliente']}</p>
-                    <p style="margin: 3px 0;"><strong>Cédula:</strong> {t['cedula']}</p>
-                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
-                    <p style="margin: 3px 0;"><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
-                    <p style="margin: 3px 0;"><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
-                    <p style="margin: 3px 0;"><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
-                    <p style="margin: 3px 0;"><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
-                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
-                    <p style="font-size: 0.72rem; text-align: center; margin: 0;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
-                </div>
-                <div class="no-print" style="text-align: center;">
-                    <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket / Guardar PDF</button>
-                </div>
-            </div>
-            """)
-      st.markdown(ticket_html, unsafe_allow_html=True)
+# 1. Estilos CSS para que al imprimir SOLO salga el ticket (oculta sidebar, botones y headers de Streamlit)
+st.markdown("""
+<style>
+@media print {
+    /* Ocultar interfaz de Streamlit */
+    [data-testid="stSidebar"], 
+    header, 
+    footer, 
+    .stButton, 
+    iframe {
+        display: none !important;
+    }
+    
+    /* Formato para papel térmico POS */
+    body {
+        background: white !important;
+    }
+    
+    .ticket-pos-box {
+        width: 100% !important;
+        max-width: 320px !important;
+        margin: 0 auto !important;
+        border: 1px solid #000 !important;
+        box-shadow: none !important;
+        background: white !important;
+        color: black !important;
+        padding: 10px !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# 2. Renderizado del Ticket HTML
+st.markdown(f"""
+<div class="ticket-pos-box" style="
+    border: 2px dashed #d3ad69; 
+    border-radius: 10px; 
+    padding: 20px; 
+    background-color: #fffdf5; 
+    max-width: 380px; 
+    margin: 0 auto; 
+    font-family: monospace; 
+    color: #111;">
+    
+    <div style="text-align: center;">
+        <img src="{logo_comercio_b64}" style="max-height: 50px; margin-bottom: 8px;" /><br>
+        <h3 style="margin: 0; color: #0d233a;">{nombre_comercio}</h3>
+        <p style="margin: 4px 0; font-size: 12px;">
+            Financiado por <b>BANKCALI</b><br>
+            Puerto Rico, Caquetá<br>
+            <b>COMPROBANTE DE COMPRA A CRÉDITO</b>
+        </p>
+    </div>
+    <hr style="border: none; border-top: 1px dashed #666;">
+    <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+        <b>N° Crédito:</b> {num_credito}<br>
+        <b>Fecha:</b> {fecha_actual}<br>
+        <b>Cliente:</b> {nombre_cliente}<br>
+        <b>Cédula:</b> {cedula_cliente}
+    </p>
+    <hr style="border: none; border-top: 1px dashed #666;">
+    <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+        <b>Monto Compra:</b> ${monto_compra:,.0f} COP<br>
+        <b>N° Cuotas:</b> {num_cuotas} Quincenales<br>
+        <b>Valor Cuota:</b> ${valor_cuota:,.0f} COP<br>
+        <b>Total a Pagar:</b> ${total_pagar:,.0f} COP
+    </p>
+    <hr style="border: none; border-top: 1px dashed #666;">
+    <p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
+        Firma Digital Verificada vía OTP SMS<br>
+        ¡Gracias por su compra!
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+st.write("")
+
+# 3. Botón interactivo HTML/JS que ejecuta el print de la ventana principal
+components.html("""
+    <script>
+    function ejecutarImpresion() {
+        window.parent.print();
+    }
+    </script>
+    <button onclick="ejecutarImpresion()" style="
+        background-color: #0f2537;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        width: 100%;
+        font-weight: bold;
+        font-size: 15px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    ">
+        🖨️ Imprimir Ticket / Guardar PDF
+    </button>
+""", height=65)
 
 # =============================================================================
 # MÓDULO 2: REGISTRO + SCORING + VERIFICACIÓN OTP & CONTRATO
