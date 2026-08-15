@@ -67,21 +67,24 @@ if not st.session_state["autenticado"]:
 
       if btn_login:
         try:
-          # Consulta corregida usando text() para binding de parámetros
-          df_user = conn.query(
-              text(
-                  "SELECT * FROM usuarios WHERE usuario = :u AND password = :p"
-              ),
-              params={"u": user_input.strip(), "p": pass_input.strip()},
-              ttl=0,
-          )
+          # Consulta directa usando la sesión nativa de SQLAlchemy
+          with conn.session as session:
+            res = session.execute(
+                text(
+                    "SELECT * FROM usuarios WHERE usuario = :u AND password ="
+                    " :p"
+                ),
+                {"u": user_input.strip(), "p": pass_input.strip()},
+            ).mappings().all()
 
-          if not df_user.empty:
-            usr_data = df_user.iloc[0]
+          if len(res) > 0:
+            usr_data = res[0]
             st.session_state["autenticado"] = True
             st.session_state["usuario"] = usr_data["usuario"]
             st.session_state["rol"] = usr_data["rol"]
-            st.session_state["comercio"] = usr_data.get("comercio_asociado", "")
+            st.session_state["comercio"] = (
+                usr_data.get("comercio_asociado", "") or ""
+            )
             st.success("¡Autenticación exitosa!")
             st.rerun()
           else:
