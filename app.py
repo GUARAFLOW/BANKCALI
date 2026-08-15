@@ -14,35 +14,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS PARA MAYOR PRESENCIA ---
+# --- ESTILOS CSS PERSONALIZADOS PARA EL BANNER Y LOGOTIPO ---
 st.markdown("""
     <style>
         /* Ajuste general y tipografía limpia */
         .main {
             background-color: #f8f9fa;
         }
-        /* Tarjetas de Contenedores */
         .css-1r6slb0, .stApp {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        /* Estilo para títulos de sección */
         h1, h2, h3 {
             color: #1E3A8A;
         }
-        /* Banner corporativo superior */
+        /* Banner corporativo superior con la imagen de fondo centrada */
         .corporate-banner {
-            padding: 20px;
-            background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
+            padding: 40px 20px;
+            background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%), 
+                        url('https://images.unsplash.com/photo-1556742049-0a67d553c2a3?auto=format&fit=crop&w=1200&q=80');
+            background-blend-mode: overlay;
             color: white;
-            border-radius: 10px;
+            border-radius: 12px;
             margin-bottom: 25px;
             text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .logo-container img {
+            max-width: 280px;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
         }
     </style>
 """, unsafe_allow_html=True)
 
 # --- PIN DE ADMINISTRADOR ---
-PIN_ADMIN = "123456789"  # Puedes cambiar este PIN por el que tú prefieras
+PIN_ADMIN = "123456789"
 
 # --- FUNCIÓN PARA ENVIAR SMS GRATIS (TEXTBELT) ---
 def enviar_sms_gratis_textbelt(celular_cliente, codigo_otp):
@@ -78,13 +91,12 @@ def evaluar_riesgo_y_cupo(ingresos):
 # --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
 
-# --- ENCABEZADO CORPORATIVO CON PRESENCIA ---
-st.markdown("""
-    <div class="corporate-banner">
-        <h2>💳 Plataforma Financiera de Crédito Rotativo</h2>
-        <p style="margin: 0; font-size: 1.1rem;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
-    </div>
-""", unsafe_allow_html=True)
+# --- IMAGEN Y ENCABEZADO CORPORATIVO EN BARRA LATERAL ---
+st.sidebar.image(
+    "https://images.unsplash.com/photo-1556742049-0a67d553c2a3?auto=format&fit=crop&w=600&q=80", 
+    use_container_width=True,
+    caption="Red Comercial Autorizada"
+)
 
 # --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
@@ -120,7 +132,6 @@ if not st.session_state.autenticado:
             
     st.sidebar.warning("🔒 **Sistema Protegido**. Inicia sesión para habilitar las operaciones.")
     
-    # Footer corporativo lateral en modo bloqueo
     st.sidebar.markdown("---")
     st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Desarrollado para Gestión Comercial<br>© 2026</p>", unsafe_allow_html=True)
     st.stop()
@@ -136,13 +147,11 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
 
 st.sidebar.markdown("---")
 
-# Opciones base para los Comercios Aliados
 menu_opciones = [
     "1. Simular / Solicitar Crédito (POS)", 
     "2. Registrar Nuevo Cliente + Scoring de Cupo"
 ]
 
-# Validación de Administrador y permisos de menú
 es_admin = (st.session_state.rol == "Administrador")
 
 if es_admin:
@@ -157,9 +166,19 @@ if es_admin:
 st.sidebar.markdown("### 🧭 Menú de Navegación")
 opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visibility="collapsed")
 
-# Footer corporativo general en barra lateral
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
+
+# --- ENCABEZADO CORPORATIVO CON LOGOTIPO CENTRADO ---
+st.markdown("""
+    <div class="corporate-banner">
+        <div class="logo-container">
+            <img src="https://i.ibb.co/3ykS45W3/logobankcali.jpg" alt="Logo BankCali">
+        </div>
+        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
+        <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- MÓDULO 1: SOLICITUD EN PUNTO DE VENTA (POS) ---
 if opcion == "1. Simular / Solicitar Crédito (POS)":
@@ -201,15 +220,15 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             monto_compra = st.number_input("Monto de la Compra ($ COP)", min_value=80000, max_value=5000000, step=10000, value=80000)
             cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
             
-            pct_aval = 0.10       # 10% Fianza / Aval
-            tasa_interes = 0.021  # 2.1% Mensual
+            pct_aval = 0.10       
+            tasa_interes = 0.021  
             
             monto_aval = monto_compra * pct_aval
             subtotal = monto_compra + monto_aval
             interes = subtotal * (tasa_interes / 2) * cuotas
             total_pagar = subtotal + interes
             valor_cuota = total_pagar / cuotas
-            desembolso = monto_compra * (1 - (comision_comercio / 100))
+            desembolso = monto_compra * (1 - (comercio_comercio / 100))
 
         st.markdown("---")
         st.subheader("📊 Resumen Financiero de la Operación")
@@ -247,9 +266,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                     fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
                     
                     with conn.session as s:
-                        # 1. Descontar cupo
                         s.execute(text("UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"), {"monto": monto_compra, "cedula": cedula})
-                        # 2. Registrar solicitud
                         s.execute(text("""
                             INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
                             VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
