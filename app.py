@@ -48,14 +48,6 @@ conn = st.connection("supabase", type="sql")
 
 # --- TÍTULO PRINCIPAL ---
 st.title("💳 Plataforma de Crédito Rotativo - Puerto Rico (Caquetá)")
-# (Si en el futuro quieres intentar poner la imagen de nuevo, quita el '#' de la siguiente línea)
-# st.image("logo.png", use_container_width=True)
-
-# --- 1. INICIALIZAR SESIÓN ---
-si "autenticado" no en calle.session_state:
-    calle.session_state.autenticado = FALSO
-    calle.session_state.rol = NINGUNO
-    calle.session_state.nombre = NINGUNO
 
 # --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
@@ -100,7 +92,6 @@ if st.sidebar.button("Cerrar Sesión"):
     st.session_state.nombre = None
     st.rerun()
 
-es_admin = (st.session_state.rol == "Administrador")
 st.sidebar.markdown("---")
 
 # Opciones base para los Comercios Aliados
@@ -109,23 +100,18 @@ menu_opciones = [
     "2. Registrar Nuevo Cliente + Scoring de Cupo"
 ]
 
-# Validación de PIN para Administrador
-es_admin = False
-if rol_usuario == "🔑 Administrador":
-    pin_ingresado = st.sidebar.text_input("Ingrese PIN de Administrador", type="password")
-    if pin_ingresado == PIN_ADMIN:
-        es_admin = True
-        st.sidebar.success("🔓 Acceso Administrador Concedido")
-        # Agregar módulos administrativos al menú
-        menu_opciones.extend([
-            "3. Registrar Pagos / Abonar Cuotas",
-            "4. Gestión General de Clientes", 
-            "5. Gestión de Almacenes Aliados",
-            "6. Panel General de Administración",
-            "7. Gestión de Usuarios"
-        ])
-    elif pin_ingresado != "":
-        st.sidebar.error("❌ PIN Incorrecto")
+# Validación de Administrador y permisos de menú
+es_admin = (st.session_state.rol == "Administrador")
+
+if es_admin:
+    # Agregar módulos administrativos al menú automáticamente si el rol es Administrador
+    menu_opciones.extend([
+        "3. Registrar Pagos / Abonar Cuotas",
+        "4. Gestión General de Clientes", 
+        "5. Gestión de Almacenes Aliados",
+        "6. Panel General de Administración",
+        "7. Gestión de Usuarios"
+    ])
 
 st.sidebar.markdown("---")
 opcion = st.sidebar.selectbox("Menú de Navegación", menu_opciones)
@@ -336,7 +322,6 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     if st.button("Registrar Almacén Oficial"):
         if nom_com and nit_com:
             try:
-                # Guardado con los nuevos datos de confianza
                 with conn.session as s:
                     s.execute(text("""
                         INSERT INTO comercios (nombre, comision, nit, propietario, telefono, direccion) 
@@ -361,34 +346,26 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     st.markdown("---")
     st.subheader("📋 Directorio Oficial de Almacenes Afiliados")
     
-    # Consulta con ttl=0 para que siempre muestre los datos actualizados en tiempo real
     df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios", ttl=0)
     
     if not df_com_all.empty:
         st.dataframe(df_com_all, use_container_width=True, hide_index=True)
         
-        # --- SECCIÓN DE BORRADO DE COMERCIOS ---
         st.markdown("---")
         st.subheader("🗑️ Eliminar un Comercio")
         
-        # Creamos una lista bonita para el desplegable combinando Nombre y NIT
         opciones_borrar = dict(zip(df_com_all['id'], df_com_all['nombre'] + " (NIT: " + df_com_all['nit'].astype(str) + ")"))
-        
-        # Selector de comercio
         id_a_borrar = st.selectbox("Selecciona el comercio que deseas eliminar:", options=list(opciones_borrar.keys()), format_func=lambda x: opciones_borrar[x])
         
-        # Botón de confirmación
         if st.button("❌ Borrar Comercio Definitivamente"):
             try:
                 with conn.session as s:
-                    # Ejecutamos el comando SQL para borrar por su ID único
                     s.execute(text("DELETE FROM comercios WHERE id = :id"), {"id": id_a_borrar})
                     s.commit()
                 st.success("✅ Comercio eliminado correctamente del sistema.")
-                st.rerun() # Recarga la pantalla al instante
+                st.rerun()
             except Exception as e:
                 st.error(f"Error al eliminar: {e}")
-
     else:
         st.info("Aún no hay comercios registrados con el nuevo formato.")
 
@@ -412,13 +389,12 @@ elif opcion == "6. Panel General de Administración" and es_admin:
         
         st.subheader("💵 Historial de Abonos / Recaudos")
         st.dataframe(df_pag_all, use_container_width=True)
-        
-        # --- MÓDULO 7: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
+
+# --- MÓDULO 7: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
 elif opcion == "7. Gestión de Usuarios" and es_admin:
     st.header("👥 Administración de Usuarios del Sistema")
     st.markdown("Crea, modifica o elimina los accesos al sistema.")
 
-# Consultar usuarios actuales en tiempo real
     try:
         df_usuarios = conn.query("SELECT id, documento, nombre, rol, pin FROM usuarios", ttl=0)
     except Exception as e:
@@ -426,10 +402,8 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
         df_usuarios = None
 
     if df_usuarios is not None:
-        # Dividimos la pantalla en 3 pestañas para que quede súper profesional
         tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
 
-        # --- PESTAÑA 1: AGREGAR ---
         with tab1:
             st.subheader("Registrar Nuevo Acceso")
             col1, col2 = st.columns(2)
@@ -456,7 +430,6 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
                 else:
                     st.warning("⚠️ Debes completar todos los campos.")
 
-        # --- PESTAÑA 2: MODIFICAR ---
         with tab2:
             st.subheader("Actualizar Datos de Usuario")
             if not df_usuarios.empty:
@@ -488,7 +461,6 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
             else:
                 st.info("Aún no hay usuarios para modificar.")
 
-        # --- PESTAÑA 3: ELIMINAR ---
         with tab3:
             st.subheader("Borrar Acceso del Sistema")
             if not df_usuarios.empty:
@@ -507,8 +479,4 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
         st.markdown("---")
         st.subheader("📋 Lista Actual de Usuarios")
         if not df_usuarios.empty:
-            # Mostramos la tabla SIN el PIN por seguridad
             st.dataframe(df_usuarios[['documento', 'nombre', 'rol']], use_container_width=True, hide_index=True)
-    
-
-   
