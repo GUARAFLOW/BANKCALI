@@ -815,12 +815,17 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
       col_p1.info(f"📌 **Saldo Pendiente Actual:** ${saldo_act:,.0f} COP")
       col_p2.info(f"📌 **Valor Cuota Sugerido:** ${vlr_cuota:,.0f} COP")
 
-      monto_abono = st.number_input(
-          "Monto del Abono ($ COP)",
-          min_value=1000.0,
-          max_value=saldo_act,
-          value=float(min(vlr_cuota, saldo_act)),
-      )
+      # Ajustamos los valores para que nunca den error cuando el saldo sea 0
+min_permitido = 0.0 if saldo_act <= 0 else 1.0
+val_sugerido = max(min_permitido, float(min(vlr_cuota, saldo_act)))
+
+monto_abono = st.number_input(
+    "Monto del Abono ($ COP)",
+    min_value=min_permitido,
+    max_value=max(min_permitido, float(saldo_act)),
+    value=val_sugerido,
+    step=1000.0
+)
 
       if st.button("💾 Registrar Pago Oficial", use_container_width=True):
         fecha_pago = datetime.now().strftime("%Y-%m-%d %H:%M")
