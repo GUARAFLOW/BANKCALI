@@ -73,7 +73,7 @@ if rol_usuario == "🔑 Administrador":
             "3. Registrar Pagos / Abonar Cuotas",
             "4. Gestión General de Clientes", 
             "5. Gestión de Almacenes Aliados",
-            "6. Panel General de Administración"
+            "6. Panel General de Administración",
             "7. Gestión de Usuarios"
         ])
     elif pin_ingresado != "":
