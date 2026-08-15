@@ -311,13 +311,11 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
             
     st.markdown("---")
     st.subheader("📋 Directorio Oficial de Almacenes Afiliados")
+    
+    # Consulta con ttl=0 para que siempre muestre los datos actualizados en tiempo real
     df_com_all = conn.query("SELECT id, nit, nombre, propietario, telefono, direccion, comision FROM comercios", ttl=0)
     
     if not df_com_all.empty:
-        st.dataframe(df_com_all, use_container_width=True, hide_index=True)
-    else:
-        st.info("Aún no hay comercios registrados con el nuevo formato.")
-        if not df_com_all.empty:
         st.dataframe(df_com_all, use_container_width=True, hide_index=True)
         
         # --- SECCIÓN DE BORRADO DE COMERCIOS ---
@@ -338,7 +336,7 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
                     s.execute(text("DELETE FROM comercios WHERE id = :id"), {"id": id_a_borrar})
                     s.commit()
                 st.success("✅ Comercio eliminado correctamente del sistema.")
-                st.rerun() # Esto recarga la pantalla mágicamente para actualizar la tabla
+                st.rerun() # Recarga la pantalla al instante
             except Exception as e:
                 st.error(f"Error al eliminar: {e}")
 
