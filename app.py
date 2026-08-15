@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS Y COMPONENTES CORPORATIVOS ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
     <style>
         .main {
@@ -27,34 +27,13 @@ st.markdown("""
             color: #1E3A8A;
         }
         .corporate-banner {
-            padding: 35px 20px;
+            padding: 25px 20px;
             background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
             color: white;
             border-radius: 12px;
             margin-bottom: 25px;
             text-align: center;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .brand-logo {
-            display: inline-block;
-            background: white;
-            color: #1E3A8A;
-            padding: 10px 25px;
-            border-radius: 8px;
-            font-size: 2rem;
-            font-weight: 800;
-            letter-spacing: 1.5px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            margin-bottom: 15px;
-        }
-        .sidebar-brand {
-            text-align: center;
-            padding: 15px;
-            background: #1E3A8A;
-            border-radius: 8px;
-            color: white;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
     </style>
 """, unsafe_allow_html=True)
@@ -96,13 +75,16 @@ def evaluar_riesgo_y_cupo(ingresos):
 # --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
 
-# --- ENCABEZADO CORPORATIVO EN BARRA LATERAL ---
-st.sidebar.markdown("""
-    <div class="sidebar-brand">
-        <h2 style="color: white; margin: 0; font-size: 1.5rem;">BankCali</h2>
-        <p style="font-size: 0.75rem; margin: 0; opacity: 0.85;">Red Comercial Autorizada</p>
-    </div>
-""", unsafe_allow_html=True)
+# --- LOGOTIPO Y ENCABEZADO EN BARRA LATERAL ---
+try:
+    st.sidebar.image("LOGOBANKCALI.jpeg", use_container_width=True)
+except Exception:
+    st.sidebar.markdown("""
+        <div style="text-align: center; padding: 10px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 10px;">
+            <h3 style="color: white; margin: 0;">BankCali</h3>
+            <p style="font-size: 0.8rem; margin: 0; opacity: 0.8;">Red Comercial Autorizada</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
@@ -175,11 +157,17 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO CON LOGOTIPO INSTITUCIONAL ---
+# --- ENCABEZADO CORPORATIVO CON LOGOTIPO EN LA VISTA PRINCIPAL ---
+st.markdown('<div class="corporate-banner">', unsafe_allow_html=True)
+col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+with col_img2:
+    try:
+        st.image("LOGOBANKCALI.jpeg", use_container_width=True)
+    except Exception:
+        st.markdown("<h1 style='color: white; margin: 0;'>BankCali</h1>", unsafe_allow_html=True)
+
 st.markdown("""
-    <div class="corporate-banner">
-        <div class="brand-logo">BankCali</div>
-        <h2 style="color: white; margin-top: 5px;">Plataforma Financiera de Crédito Rotativo</h2>
+        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
