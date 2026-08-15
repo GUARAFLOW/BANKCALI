@@ -30,17 +30,6 @@ def obtener_ruta_logo():
     if os.path.exists(nombre):
       return nombre
   return None
-
-
-ruta_logo = obtener_ruta_logo()
-
-# Inicialización del estado de sesión
-if "autenticado" not in st.session_state:
-  st.session_state["autenticado"] = False
-  st.session_state["usuario"] = ""
-  st.session_state["rol"] = ""
-  st.session_state["comercio"] = ""
-
 # =============================================================================
 # CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS Y USUARIOS
 # =============================================================================
@@ -80,6 +69,15 @@ try:
       s.commit()
 except Exception as e:
   print(f"Error en la migración/inicialización de base de datos: {e}")
+
+ruta_logo = obtener_ruta_logo()
+
+# Inicialización del estado de sesión
+if "autenticado" not in st.session_state:
+  st.session_state["autenticado"] = False
+  st.session_state["usuario"] = ""
+  st.session_state["rol"] = ""
+  st.session_state["comercio"] = ""
 
 # -----------------------------------------------------------------------------
 # PANTALLA DE AUTENTICACIÓN / LOGIN
