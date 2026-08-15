@@ -599,44 +599,51 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
 
+    # =============================================================================
+# MÓDULO 1: SIMULAR / SOLICITAR CRÉDITO (POS)
+# =============================================================================
+# ... (código previo del formulario, OTP y registro en Supabase)
+
+    # ⬇️ REEMPLAZA DESDE ESTA LÍNEA ⬇️
     if "ultimo_ticket" in st.session_state:
-      t = st.session_state["ultimo_ticket"]
-      st.markdown("---")
-      st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
+        t = st.session_state["ultimo_ticket"]
+        st.markdown("---")
+        st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
 
-      # Renderizar logo del comercio o logo estándar
-      logo_html = ""
-      if t.get("logo_comercio"):
-        logo_html = f'<img src="{t["logo_comercio"]}" style="max-height: 70px; margin-bottom: 8px; border-radius: 4px;" /><br>'
+        logo_html = ""
+        if t.get("logo_comercio"):
+            logo_html = f'<img src="{t["logo_comercio"]}" style="max-height: 70px; margin-bottom: 8px; border-radius: 4px;" /><br>'
 
-      ticket_html = textwrap.dedent(f"""
-            <div class="printable-area">
-                <div class="pos-ticket">
-                    <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
-                        {logo_html}
-                        <h3 style="margin: 0; color: #1E3A8A;">{t['comercio'].upper()}</h3>
-                        <p style="margin: 2px 0; font-size: 0.8rem; color: #555;">Financiado por <strong>BANKCALI</strong></p>
-                        <p style="margin: 2px 0; font-size: 0.75rem;">Puerto Rico, Caquetá</p>
-                        <p style="margin: 4px 0 0 0; font-size: 0.8rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
-                    </div>
-                    <p style="margin: 3px 0;"><strong>N° Crédito:</strong> {t['id']}</p>
-                    <p style="margin: 3px 0;"><strong>Fecha:</strong> {t['fecha']}</p>
-                    <p style="margin: 3px 0;"><strong>Cliente:</strong> {t['cliente']}</p>
-                    <p style="margin: 3px 0;"><strong>Cédula:</strong> {t['cedula']}</p>
-                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
-                    <p style="margin: 3px 0;"><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
-                    <p style="margin: 3px 0;"><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
-                    <p style="margin: 3px 0;"><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
-                    <p style="margin: 3px 0;"><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
-                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
-                    <p style="font-size: 0.72rem; text-align: center; margin: 0;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
-                </div>
-                <div class="no-print" style="text-align: center;">
-                    <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket / Guardar PDF</button>
-                </div>
-            </div>
-            """)
-      st.markdown(ticket_html, unsafe_allow_html=True)
+        # IMPORTANTE: Mantener 'ticket_html = f"""' pegado al margen izquierdo sin tabulaciones
+        ticket_html = f"""
+<div class="printable-area">
+    <div class="pos-ticket">
+        <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
+            {logo_html}
+            <h3 style="margin: 0; color: #1E3A8A;">{t['comercio'].upper()}</h3>
+            <p style="margin: 2px 0; font-size: 0.8rem; color: #555;">Financiado por <strong>BANKCALI</strong></p>
+            <p style="margin: 2px 0; font-size: 0.75rem;">Puerto Rico, Caquetá</p>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
+        </div>
+        <p style="margin: 3px 0;"><strong>N° Crédito:</strong> {t['id']}</p>
+        <p style="margin: 3px 0;"><strong>Fecha:</strong> {t['fecha']}</p>
+        <p style="margin: 3px 0;"><strong>Cliente:</strong> {t['cliente']}</p>
+        <p style="margin: 3px 0;"><strong>Cédula:</strong> {t['cedula']}</p>
+        <hr style="border: 0.5px dashed #333; margin: 8px 0;">
+        <p style="margin: 3px 0;"><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
+        <p style="margin: 3px 0;"><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
+        <p style="margin: 3px 0;"><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
+        <p style="margin: 3px 0;"><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
+        <hr style="border: 0.5px dashed #333; margin: 8px 0;">
+        <p style="font-size: 0.72rem; text-align: center; margin: 0;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
+    </div>
+    <div class="no-print" style="text-align: center;">
+        <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket / Guardar PDF</button>
+    </div>
+</div>
+"""
+        st.markdown(ticket_html.replace('\xa0', ' '), unsafe_allow_html=True)
+    
 
 # =============================================================================
 # MÓDULO 2: REGISTRO + SCORING + VERIFICACIÓN OTP & CONTRATO
