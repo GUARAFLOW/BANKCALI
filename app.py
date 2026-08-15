@@ -637,28 +637,42 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         logo_html = ""
 
     # 3. Estilos CSS de impresión
-    st.markdown("""
-<style>
-@media print {
-    [data-testid="stSidebar"], header, footer, .stButton, iframe {
-        display: none !important;
+    # 1. Estilos CSS de impresión corregidos (Técnica de Visibilidad Directa)
+    st.markdown(
+        """
+    <style>
+    @media print {
+        /* Oculta visualmente todo el contenedor de Streamlit */
+        body * {
+            visibility: hidden !important;
+        }
+        
+        /* Muestra únicamente la caja del ticket y todos sus elementos internos */
+        .ticket-pos-box, .ticket-pos-box * {
+            visibility: visible !important;
+        }
+        
+        /* Posiciona el ticket al inicio de la página impresa */
+        .ticket-pos-box {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 360px !important;
+            margin: 0 !important;
+            padding: 15px !important;
+            border: 1px dashed #000 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+        }
     }
-    body { background: white !important; }
-    .ticket-pos-box {
-        width: 100% !important;
-        max-width: 320px !important;
-        margin: 0 auto !important;
-        border: 1px solid #000 !important;
-        box-shadow: none !important;
-        background: white !important;
-        color: black !important;
-        padding: 10px !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
-    # 4. Renderizado del Ticket HTML (sin sangría inicial para evitar formato de código)
+    # 2. Renderizado del Ticket HTML
     ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
 <div style="text-align: center;">
 {logo_html}
@@ -694,7 +708,7 @@ Firma Digital Verificada vía OTP SMS<br>
 
     st.write("")
 
-    # 5. Botón de Impresión JavaScript usando el módulo nativo de Streamlit
+    # 3. Botón de Impresión
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
