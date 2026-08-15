@@ -53,7 +53,7 @@ def render_simulador(es_admin, usuario_comercio):
   # Búsqueda o registro de cliente
   if cedula:
     res_cli = conn.query(
-        "SELECT * FROM clientes WHERE cedula = :ced",
+        text("SELECT * FROM clientes WHERE cedula = :ced"),
         params={"ced": cedula},
         ttl=0,
     )
