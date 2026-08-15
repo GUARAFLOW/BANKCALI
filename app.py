@@ -51,9 +51,51 @@ st.title("💳 Plataforma de Crédito Rotativo - Puerto Rico (Caquetá)")
 # (Si en el futuro quieres intentar poner la imagen de nuevo, quita el '#' de la siguiente línea)
 # st.image("logo.png", use_container_width=True)
 
-# --- CONTROL DE PERMISOS / ROLES EN BARRA LATERAL ---
-st.sidebar.title("🔐 Control de Acceso")
-rol_usuario = st.sidebar.radio("Seleccione el Perfil de Usuario:", ["🏪 Comercio Aliado (Público)", "🔑 Administrador"])
+# --- 1. INICIALIZAR SESIÓN ---
+si "autenticado" no en calle.session_state:
+    calle.session_state.autenticado = FALSO
+    calle.session_state.rol = NINGUNO
+    calle.session_state.nombre = NINGUNO
+
+# --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
+calle.sidebar.title("🔐 Control de Acceso")
+
+si no calle.session_state.autenticado:
+    calle.sidebar.markdown("Ingresa tus credenciales:")
+    doc_login = calle.sidebar.text_input("Documento de Usuario")
+    pin_login = calle.sidebar.text_input("PIN de Acceso", tipo="password")
+    
+    si calle.sidebar.button("Iniciar Sesión"):
+        si doc_login y pin_login:
+            intentar:
+                usuario_db = conn.consulta("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", parametros={"doc": doc_login, "pin": pin_login}, ttl=0)
+                
+                si no usuario_db.vacio:
+                    calle.session_state.autenticado = VERDADERO
+                    calle.session_state.rol = usuario_db.iloc[0]['rol']
+                    calle.session_state.nombre = usuario_db.iloc[0]['nombre']
+                    calle.rerun()
+                sino:
+                    calle.sidebar.error("❌ Documento o PIN incorrectos.")
+            excepto Excepción como e:
+                calle.sidebar.error("Error al conectar con la base de datos.")
+        sino:
+            calle.sidebar.warning("⚠️ Completa ambos campos.")
+            
+    calle.warning("🔒 **Sistema Bloqueado**. Por favor, inicia sesión en el panel lateral.")
+    calle.stop()
+
+# --- 3. SI EL INICIO DE SESIÓN FUE EXITOSO ---
+calle.sidebar.success(f"👤 Conectado como:\n**{calle.session_state.nombre}**\n({calle.session_state.rol})")
+
+si calle.sidebar.button("Cerrar Sesión"):
+    calle.session_state.autenticado = FALSO
+    calle.session_state.rol = NINGUNO
+    calle.session_state.nombre = NINGUNO
+    calle.rerun()
+
+es_admin = (calle.session_state.rol == "Administrador")
+calle.sidebar.markdown("---")
 
 # Opciones base para los Comercios Aliados
 menu_opciones = [
