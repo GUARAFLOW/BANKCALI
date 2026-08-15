@@ -1065,8 +1065,94 @@ elif opcion == "7. Panel General de Administración" and es_admin:
     kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
     kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
     kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
+    import plotly.express as px
+    import pandas as pd
 
-  except Exception as e:
+    st.markdown("---")
+    st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
+
+    # Reemplaza 'df_creditos' por el nombre de tu DataFrame o consulta SQL de créditos
+    # Asegúrate de que df_creditos tenga las columnas: 'estado', 'comercio', 'valor_cuota', 'saldo_pendiente', 'monto'
+
+    if 'df_creditos' in locals() and not df_creditos.empty:
+    col_graf1, col_graf2 = st.columns(2)
+
+    # -------------------------------------------------------------
+    # 1. GRÁFICA DE PÉRDIDAS Y ESTADO DE CARTERA (Donut Chart)
+    # -------------------------------------------------------------
+    with col_graf1:
+        st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
+        
+        # Agrupamos por estado (Ej: ACTIVO, CANCELADO, EN MORA)
+        df_estado = df_creditos.groupby("estado").size().reset_index(name="cantidad")
+        
+        fig_estado = px.pie(
+            df_estado, 
+            values="cantidad", 
+            names="estado", 
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        fig_estado.update_traces(textposition='inside', textinfo='percent+label')
+        fig_estado.update_layout(margin=dict(t=20, b=20, l=10, r=10), showlegend=False)
+        st.plotly_chart(fig_estado, use_container_width=True)
+
+    # -------------------------------------------------------------
+    # 2. GRÁFICA DE VENTAS POR COMERCIO (Bar Chart)
+    # -------------------------------------------------------------
+    with col_graf2:
+        st.markdown("##### 🏪 Capital Colocado por Comercio Afiliado")
+        
+        df_comercio = df_creditos.groupby("comercio")["monto"].sum().reset_index()
+        
+        fig_comercio = px.bar(
+            df_comercio,
+            x="monto",
+            y="comercio",
+            orientation="h",
+            text_auto='.2s',
+            color="monto",
+            color_continuous_scale="Blues"
+        )
+        fig_comercio.update_layout(
+            xaxis_title="Monto ($ COP)", 
+            yaxis_title="", 
+            margin=dict(t=20, b=20, l=10, r=10),
+            coloraxis_showscale=False
+        )
+        st.plotly_chart(fig_comercio, use_container_width=True)
+
+    # -------------------------------------------------------------
+    # 3. BALANCE GENERAL: SALDO PENDIENTE VS CAPITAL RECUPERADO
+    # -------------------------------------------------------------
+    st.markdown("##### 💰 Distribución de Cartera Actual")
+    
+    saldo_recuperado = df_creditos['monto'].sum() - df_creditos['saldo_pendiente'].sum()
+    saldo_pendiente = df_creditos['saldo_pendiente'].sum()
+    
+    df_balance = pd.DataFrame({
+        'Concepto': ['Capital Recuperado / Cobrado', 'Saldo Pendiente por Cobrar'],
+        'Monto': [max(0, saldo_recuperado), saldo_pendiente]
+    })
+
+    fig_balance = px.bar(
+        df_balance,
+        x='Concepto',
+        y='Monto',
+        color='Concepto',
+        text_auto=',.0f',
+        color_discrete_map={
+            'Capital Recuperado / Cobrado': '#2ecc71',
+            'Saldo Pendiente por Cobrar': '#e74c3c'
+        }
+    )
+    fig_balance.update_layout(showlegend=False, margin=dict(t=20, b=20, l=10, r=10))
+    st.plotly_chart(fig_balance, use_container_width=True)
+
+    else:
+    st.info("No hay suficientes datos de créditos registrados para generar las gráficas.")  
+
+    except Exception as e:
     st.error(f"Error calculando indicadores: {e}")
 
 # =============================================================================
