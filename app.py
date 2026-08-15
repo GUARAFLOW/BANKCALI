@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime, timedelta
 import random
+import textwrap
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -29,7 +30,7 @@ st.set_page_config(
 # ESTILOS CSS PERSONALIZADOS, FORMATO TICKET POS Y ESTILOS DE IMPRESIÓN
 # =============================================================================
 st.markdown(
-    """
+    textwrap.dedent("""
     <style>
         .main {
             background-color: #f8f9fa;
@@ -115,7 +116,7 @@ st.markdown(
             }
         }
     </style>
-""",
+"""),
     unsafe_allow_html=True,
 )
 
@@ -248,12 +249,12 @@ if "autenticado" not in st.session_state:
 # PANEL DE LOGIN (BARRA LATERAL)
 # =============================================================================
 st.sidebar.markdown(
-    """
+    textwrap.dedent("""
     <div style="text-align: center; padding: 12px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
         <h3 style="color: white; margin: 0; font-size: 1.3rem;">Datos de Acceso</h3>
         <p style="font-size: 0.75rem; margin: 0; opacity: 0.85;">Plataforma BankCali</p>
     </div>
-""",
+"""),
     unsafe_allow_html=True,
 )
 
@@ -367,12 +368,12 @@ st.sidebar.markdown(
 
 # BANNER CORPORATIVO
 st.markdown(
-    """
+    textwrap.dedent("""
     <div class="corporate-banner">
         <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.95;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
-""",
+"""),
     unsafe_allow_html=True,
 )
 
@@ -608,7 +609,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       if t.get("logo_comercio"):
         logo_html = f'<img src="{t["logo_comercio"]}" style="max-height: 70px; margin-bottom: 8px; border-radius: 4px;" /><br>'
 
-      ticket_html = f"""
+      ticket_html = textwrap.dedent(f"""
             <div class="printable-area">
                 <div class="pos-ticket">
                     <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
@@ -634,7 +635,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                     <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket / Guardar PDF</button>
                 </div>
             </div>
-            """
+            """)
       st.markdown(ticket_html, unsafe_allow_html=True)
 
 # =============================================================================
@@ -729,7 +730,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.subheader("📄 Acuerdo Comercial y Términos del Crédito Rotativo")
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="terms-box">
             <h4>CONTRATO DE LÍNEA DE CRÉDITO ROTATIVO Y AUTORIZACIÓN DE FIRMA DIGITAL</h4>
             <p><strong>Partes:</strong> BankCali (Operador Financiero Puerto Rico, Caquetá) y el Cliente titular de la Cédula No. <strong>{c_cedula}</strong> ({c_nombre}).</p>
@@ -738,7 +739,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
             <p><strong>3. TASAS Y COSTOS:</strong> Tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y tarifa de Aval del 10% sobre compra.</p>
             <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS:</strong> El CLIENTE autoriza el envío de notificaciones y la validación por código OTP enviado al número móvil <strong>{c_celular}</strong> como firma electrónica válida conforme a la Ley 527 de 1999.</p>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
