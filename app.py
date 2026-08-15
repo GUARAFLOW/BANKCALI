@@ -17,7 +17,6 @@ st.set_page_config(
 # --- ESTILOS CSS PERSONALIZADOS PARA EL BANNER Y LOGOTIPO ---
 st.markdown("""
     <style>
-        /* Ajuste general y tipografía limpia */
         .main {
             background-color: #f8f9fa;
         }
@@ -27,12 +26,9 @@ st.markdown("""
         h1, h2, h3 {
             color: #1E3A8A;
         }
-        /* Banner corporativo superior con la imagen de fondo centrada */
         .corporate-banner {
-            padding: 40px 20px;
-            background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%), 
-                        url('https://images.unsplash.com/photo-1556742049-0a67d553c2a3?auto=format&fit=crop&w=1200&q=80');
-            background-blend-mode: overlay;
+            padding: 30px 20px;
+            background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
             color: white;
             border-radius: 12px;
             margin-bottom: 25px;
@@ -46,10 +42,12 @@ st.markdown("""
             margin-bottom: 15px;
         }
         .logo-container img {
-            max-width: 280px;
+            max-width: 240px;
             height: auto;
             border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            background-color: white;
+            padding: 5px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -169,13 +167,16 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO CON LOGOTIPO CENTRADO ---
+# --- ENCABEZADO CORPORATIVO CON LOGOTIPO CENTRADO (USANDO NATIVO STREAMLIT) ---
+st.markdown('<div class="corporate-banner">', unsafe_allow_html=True)
+
+col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+with col_logo2:
+    # Usamos el componente nativo de Streamlit que procesa la imagen de manera óptima
+    st.image("logobankcali.jpeg.jpeg", use_container_width=True)
+
 st.markdown("""
-    <div class="corporate-banner">
-        <div class="logo-container">
-            <img src="https://i.ibb.co/3ykS45W3/logobankcali.jpg" alt="Logo BankCali">
-        </div>
-        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
+        <h2 style="color: white; margin-top: 5px;">Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
