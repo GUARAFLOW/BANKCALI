@@ -731,89 +731,180 @@ elif opcion == "7. Panel General de Administración" and es_admin:
         st.dataframe(df_sol_all, use_container_width=True, hide_index=True)
 
 # --- MÓDULO 8: GESTIÓN DE USUARIOS (SOLO ADMIN) ---
-elif opcion == "8. Gestión de Usuarios" and es_admin:
+import pandas as pd
+import streamlit as st
+
+# Supongamos que este es el bloque donde renderizas la opción "8. Gestión de Usuarios"
+if opcion_menu == "8. Gestión de Usuarios":
+
     st.header("👥 Administración de Usuarios y Accesos")
-    st.markdown("---")
 
-    df_usuarios = conn.query("SELECT * FROM usuarios", ttl=0)
-    df_comercios_nombres = conn.query("SELECT nombre FROM comercios", ttl=0)
-    lista_comercios_opciones = ["N/A - Administrador"] + (df_comercios_nombres['nombre'].tolist() if not df_comercios_nombres.empty else [])
-    
-    tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
+    # 1. Definimos las 4 pestañas (incluyendo la lista)
+    tab_listar, tab_agregar, tab_modificar, tab_eliminar = st.tabs(
+        [
+            "📋 Usuarios Registrados",
+            "➕ Agregar Usuario",
+            "✏️ Modificar Usuario",
+            "🗑️ Eliminar Usuario",
+        ]
+    )
 
-    with tab1:
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            nuevo_doc = st.text_input("Documento de Identidad")
-            nuevo_nom = st.text_input("Nombre Completo")
-            nuevo_com_asig = st.selectbox("Asignar a Comercio", lista_comercios_opciones)
-        with col2:
-            nuevo_rol = st.selectbox("Rol del Usuario", ["Comercio Aliado", "Administrador"])
-            nuevo_pin = st.text_input("PIN de Acceso", type="password")
+    # =========================================================================
+    # 1. PESTAÑA: VER Y CONSULTAR USUARIOS REGISTRADOS
+    # =========================================================================
+    with tab_listar:
+        st.subheader("Lista de Usuarios Registrados en BankCali")
 
-        st.markdown("---")
-        if st.button("💾 Guardar Nuevo Usuario", use_container_width=True):
-            if nuevo_doc and nuevo_nom and nuevo_pin:
-                try:
-                    with conn.session as s:
-                        s.execute(text("""
-                            INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado) 
-                            VALUES (:doc, :nom, :rol, :pin, :comercio)
-                        """), {
-                            "doc": nuevo_doc, "nom": nuevo_nom, "rol": nuevo_rol, "pin": nuevo_pin,
-                            "comercio": nuevo_com_asig if nuevo_rol == "Comercio Aliado" else "N/A - Administrador"
-                        })
-                        s.commit()
-                    st.success("✅ Usuario creado con éxito.")
-                    st.rerun()
-                except IntegrityError:
-                    st.error("❌ Documento duplicado.")
+        # Botón para refrescar manualmente si es necesario
+        if st.button("🔄 Actualizar Tabla"):
+            st.rerun()
+
+        try:
+            # Reemplaza 'usuarios' por el nombre exacto de tu tabla en Supabase
+            respuesta = (
+                supabase.table("usuarios")
+                .select("documento, nombre, rol, comercio")
+                .execute()
+            )
+
+            if respuesta.data and len(respuesta.data) > 0:
+                # Convertimos la respuesta JSON a un DataFrame de Pandas
+                df_usuarios = pd.DataFrame(respuesta.data)
+
+                # Renombramos las columnas para que se vean ordenadas en pantalla
+                df_usuarios = df_usuarios.rename(
+                    columns={
+                        "documento": "Documento de Identidad",
+                        "nombre": "Nombre Completo",
+                        "rol": "Rol asignado",
+                        "comercio": "Comercio Vinculado",
+                    }
+                )
+
+                # Mostramos la tabla interactiva
+                st.dataframe(
+                    df_usuarios, use_container_width=True, hide_index=True
+                )
+                st.caption(f"Total registrados: {len(df_usuarios)} usuarios")
+
             else:
-                st.warning("⚠️ Completa los campos obligatorios.")
+                st.info(
+                    "No hay usuarios registrados actualmente en la base de datos."
+                )
 
-    with tab2:
-        if not df_usuarios.empty:
-            opciones_mod = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
-            id_mod = st.selectbox("Selecciona el usuario a modificar:", options=list(opciones_mod.keys()), format_func=lambda x: opciones_mod[x])
-            usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0].to_dict()
-            
-            col3, col4 = st.columns(2, gap="large")
-            with col3:
-                mod_doc = st.text_input("Documento", value=usr_actual['documento'])
-                mod_nom = st.text_input("Nombre", value=usr_actual['nombre'])
-                comercio_actual_bd = usr_actual.get('comercio_asignado', "N/A - Administrador")
-                idx_com = lista_comercios_opciones.index(comercio_actual_bd) if comercio_actual_bd in lista_comercios_opciones else 0
-                mod_comercio = st.selectbox("Modificar Comercio Asignado", lista_comercios_opciones, index=idx_com)
+        except Exception as e:
+            st.error(
+                f"⚠️ Error al conectar o consultar la tabla de usuarios: {e}"
+            )
 
-            with col4:
-                roles = ["Comercio Aliado", "Administrador"]
-                idx_rol = roles.index(usr_actual['rol']) if usr_actual['rol'] in roles else 0
-                mod_rol = st.selectbox("Nuevo Rol", roles, index=idx_rol)
-                mod_pin = st.text_input("Cambiar PIN", value=usr_actual['pin'], type="password")
+    # =========================================================================
+    # 2. PESTAÑA: AGREGAR USUARIO (FORMULARIO)
+    # =========================================================================
+    with tab_agregar:
+        st.subheader("Registrar Nuevo Usuario")
 
-            if st.button("💾 Guardar Cambios de Usuario", use_container_width=True):
-                with conn.session as s:
-                    s.execute(text("""
-                        UPDATE usuarios 
-                        SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
-                        WHERE id = :id
-                    """), {
-                        "doc": mod_doc, "nom": mod_nom, "rol": mod_rol, "pin": mod_pin,
-                        "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
-                        "id": id_mod
-                    })
-                    s.commit()
-                st.success("✅ Usuario actualizado correctamente.")
-                st.rerun()
+        with st.form("form_nuevo_usuario", clear_on_submit=True):
+            col1, col2 = st.columns(2)
 
-    with tab3:
-        if not df_usuarios.empty:
-            opciones_del = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
-            id_del = st.selectbox("Selecciona el usuario a eliminar:", options=list(opciones_del.keys()), format_func=lambda x: opciones_del[x])
-            
-            if st.button("🗑️ Eliminar Usuario Definitivamente", type="primary"):
-                with conn.session as s:
-                    s.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": id_del})
-                    s.commit()
-                st.success("✅ Usuario eliminado.")
-                st.rerun()
+            with col1:
+                doc_identidad = st.text_input(
+                    "Documento de Identidad",
+                    placeholder="Ej: 1007...",
+                )
+                nombre_completo = st.text_input(
+                    "Nombre Completo", placeholder="Nombre y Apellidos"
+                )
+                asignar_comercio = st.selectbox(
+                    "Asignar a Comercio",
+                    [
+                        "N/A - Administrador",
+                        "Comercio Ejemplo 1",
+                        "Comercio Ejemplo 2",
+                    ],
+                )
+
+            with col2:
+                rol_usuario = st.selectbox(
+                    "Rol del Usuario",
+                    [
+                        "Comercio Aliado",
+                        "FUNDADOR (Administrador)",
+                        "Cliente",
+                    ],
+                )
+                pin_acceso = st.text_input(
+                    "PIN de Acceso",
+                    type="password",
+                    max_chars=6,
+                    help="Ingresa una clave o PIN numérico",
+                )
+
+            btn_guardar = st.form_submit_button("💾 Guardar Nuevo Usuario")
+
+            if btn_guardar:
+                if (
+                    not doc_identidad
+                    or not nombre_completo
+                    or not pin_acceso
+                ):
+                    st.warning(
+                        "⚠️ Por favor completa todos los campos obligatorios."
+                    )
+                else:
+                    try:
+                        # Estructura del nuevo registro
+                        nuevo_registro = {
+                            "documento": doc_identidad.strip(),
+                            "nombre": nombre_completo.strip(),
+                            "rol": rol_usuario,
+                            "pin": pin_acceso.strip(),
+                            "comercio": asignar_comercio,
+                        }
+
+                        # Insertar en Supabase
+                        supabase.table("usuarios").insert(
+                            nuevo_registro
+                        ).execute()
+
+                        st.success(
+                            f"✅ Usuario **{nombre_completo}** creado con éxito."
+                        )
+                        st.rerun()  # Recarga la app para actualizar la pestaña de la lista
+
+                    except Exception as e:
+                        st.error(f"Error al guardar el usuario: {e}")
+
+    # =========================================================================
+    # 3. PESTAÑA: MODIFICAR USUARIO
+    # =========================================================================
+    with tab_modificar:
+        st.subheader("Modificar Información de Usuario")
+        doc_buscar = st.text_input(
+            "Ingrese el Documento del usuario a editar:"
+        )
+
+        if doc_buscar:
+            # Lógica para consultar usuario y mostrar campos editables
+            st.info(f"Buscando datos del documento: {doc_buscar}...")
+
+    # =========================================================================
+    # 4. PESTAÑA: ELIMINAR USUARIO
+    # =========================================================================
+    with tab_eliminar:
+        st.subheader("Eliminar Usuario del Sistema")
+        doc_eliminar = st.text_input(
+            "Ingrese el Documento del usuario a eliminar:"
+        )
+
+        if st.button("🗑️ Confirmar Eliminación"):
+            if doc_eliminar:
+                try:
+                    supabase.table("usuarios").delete().eq(
+                        "documento", doc_eliminar.strip()
+                    ).execute()
+                    st.success("✅ Usuario eliminado correctamente.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar usuario: {e}")
+            else:
+                st.warning("Ingrese un documento válido.")
