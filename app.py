@@ -26,15 +26,19 @@ st.markdown("""
         h1, h2, h3 {
             color: #1E3A8A;
         }
-        .corporate-banner {
+        /* Estilo totalmente personalizado para el banner corporativo */
+        div.corporate-banner {
             padding: 30px 20px;
-            background: linear-gradient(135deg, #0A192F 0%, #1E3A8A 50%, #0284C7 100%);
-            color: white;
+            background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%) !important;
+            color: white !important;
             border-radius: 12px;
             margin-bottom: 25px;
             text-align: center;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-            border-bottom: 4px solid #38BDF8;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            border: 1px solid #38BDF8;
+        }
+        div.corporate-banner h2, div.corporate-banner p {
+            color: white !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -167,10 +171,10 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS (ESTILO LOGO BANKCALI) ---
+# --- ENCABEZADO CORPORATIVO PARA LAS VISTAS INTERNAS (ESTILO OSCURO / LOGO BANKCALI) ---
 st.markdown("""
     <div class="corporate-banner">
-        <h2 style="color: white; margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
+        <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.95;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
@@ -181,10 +185,13 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     st.markdown("Realiza simulaciones de crédito rápidas y genera desembolsos seguros con verificación OTP.")
     st.markdown("---")
     
-    df_comercios = conn.query("SELECT nombre, comision FROM comercios")
+    try:
+        df_comercios = conn.query("SELECT nombre, comision FROM comercios", ttl=0)
+    except Exception:
+        df_comercios = pd.DataFrame()
     
     if df_comercios.empty:
-        st.warning("⚠️ No hay comercios registrados aún. Comunícate con el Administrador para afiliar tu almacén.")
+        st.warning("⚠️ No hay comercios registrados aún o la tabla está vacía. Ve al módulo de 'Gestión de Almacenes Aliados' para registrar uno.")
     else:
         col1, col2 = st.columns(2, gap="large")
         with col1:
@@ -196,7 +203,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             
             cliente_info = None
             if cedula:
-                cliente_info_df = conn.query("SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced", params={"ced": cedula})
+                cliente_info_df = conn.query("SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced", params={"ced": cedula}, ttl=0)
                 if not cliente_info_df.empty:
                     cliente_info = cliente_info_df.iloc[0]
                 
