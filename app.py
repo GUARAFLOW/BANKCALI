@@ -600,7 +600,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
 
-   if "ultimo_ticket" in st.session_state:
+        if "ultimo_ticket" in st.session_state:
         t = st.session_state["ultimo_ticket"]
         st.markdown("---")
         st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
@@ -611,8 +611,8 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
         # Estilos CSS generales y reglas para ocultar la interfaz de Streamlit al imprimir
         ticket_html = f"""
-<style>
-    .pos-ticket {{
+         <style>
+        .pos-ticket {{
         background-color: #fff;
         border: 1px dashed #333;
         padding: 15px;
@@ -621,8 +621,8 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         margin: 0 auto;
         font-family: 'Courier New', Courier, monospace;
         color: #000;
-    }}
-    @media print {{
+        }}
+        @media print {{
         section[data-testid="stSidebar"],
         header,
         footer,
@@ -638,9 +638,9 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
-        }}
-    }}
-</style>
+            }}
+            }}
+         </style>
 
 <div class="pos-ticket">
     <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
