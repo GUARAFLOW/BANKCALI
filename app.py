@@ -66,15 +66,43 @@ def enviar_sms_gratis_textbelt(celular_cliente, codigo_otp):
         print(f"Error enviando SMS: {e}")
         return False
 
-# --- MOTOR DE EVALUACIÓN CREDITICIA (REGLA DE INGRESOS Y 20%) ---
-def evaluar_riesgo_y_cupo(ingresos):
-    if ingresos <= 1000000:
-        cupo_final = 80000
+# --- NUEVO MOTOR DE EVALUACIÓN CREDITICIA (INGRESOS Y GASTOS) ---
+def evaluar_riesgo_y_cupo(ingresos, gastos):
+    pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
+    
+    # RANGO 1: 100,000 a 1,000,000
+    if 100000 <= ingresos <= 1000000:
+        if pct_gastos <= 0.35:
+            cupo = 80000
+            estado = "APROBADO"
+        else:
+            cupo = 0
+            estado = "RECHAZADO"
+            
+    # RANGO 2: 1,000,001 a 2,500,000
+    elif 1000001 <= ingresos <= 2500000:
+        margen_disponible = ingresos - gastos
+        if margen_disponible < 0:
+            cupo = 0
+            estado = "RECHAZADO"
+        else:
+            cupo = round((margen_disponible * 0.25) / 10000) * 10000
+            estado = "APROBADO" if cupo > 0 else "RECHAZADO"
+            
+    # RANGO 3: > 2,500,001
     else:
-        cupo_calculado = ingresos * 0.20
-        cupo_final = round(cupo_calculado / 10000) * 10000
-        
-    return cupo_final, "APROBADO", f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo_final:,.0f} COP."
+        cupo_base = ingresos * 0.30
+        if pct_gastos > 0.50:
+            reduccion = (pct_gastos - 0.50) * 0.5 
+            cupo_final = cupo_base * (1 - reduccion)
+        else:
+            cupo_final = cupo_base
+            
+        cupo = round(cupo_final / 10000) * 10000
+        estado = "APROBADO" if cupo > 0 else "RECHAZADO"
+
+    mensaje = f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo:,.0f} COP." if cupo > 0 else "❌ Crédito no aprobado por capacidad de endeudamiento."
+    return cupo, estado, mensaje
 
 # --- CONEXIÓN A BASE DE DATOS SUPABASE (NUBE) ---
 conn = st.connection("supabase", type="sql")
@@ -284,11 +312,11 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 # --- MÓDULO 2: REGISTRO + SCORING (POS) ---
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación y Registro de Nuevo Cliente")
-    st.markdown("Sistema automatizado de scoring crediticio basado en ingresos declarados.")
+    st.markdown("Sistema automatizado de scoring crediticio basado en ingresos y capacidad de gastos.")
     
     # Mostrar el mensaje de política de crédito ÚNICAMENTE si es Administrador
     if es_admin:
-        st.info("💡 **Política de Crédito:** Ingresos $\le$ \$1.000.000 COP reciben un cupo base de \$80.000 COP. Ingresos superiores reciben un cupo equivalente al 20%. Todos los campos son obligatorios.")
+        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos $\le$ 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos son obligatorios.")
     
     st.markdown("---")
     
@@ -317,7 +345,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         c_ingresos = st.number_input("Ingresos Mensuales ($ COP) *", min_value=0, max_value=20000000, step=50000, value=1000000)
         c_gastos = st.number_input("Gastos Mensuales Estimados ($ COP) *", min_value=0, max_value=15000000, step=50000, value=400000)
 
-    cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(c_ingresos)
+    cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(c_ingresos, c_gastos)
     
     st.markdown("---")
     st.subheader("🎯 Resultado de la Evaluación de Riesgo")
