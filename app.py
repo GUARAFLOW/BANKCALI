@@ -1,11 +1,18 @@
 from datetime import datetime, timedelta
 import random
 import pandas as pd
-import plotly.express as px
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
+
+#Intentar importar Plotly opcionalmente
+try:
+  import plotly.express as px
+
+  HAS_PLOTLY = True
+except ImportError:
+  HAS_PLOTLY = False
 
 # =============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -822,11 +829,14 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
             " pendiente por abonar."
         )
       else:
+        min_p = 0.0 if saldo_act <= 0 else 1.0
+        val_s = max(min_p, float(min(vlr_cuota, saldo_act)))
+
         monto_abono = st.number_input(
             "Monto del Abono ($ COP)",
-            min_value=1.0,
-            max_value=saldo_act,
-            value=float(min(vlr_cuota, saldo_act)),
+            min_value=min_p,
+            max_value=max(min_p, float(saldo_act)),
+            value=val_s,
             step=1000.0,
         )
 
@@ -1076,82 +1086,116 @@ elif opcion == "7. Panel General de Administración" and es_admin:
     st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
 
     if not df_solicitudes.empty:
-      col_graf1, col_graf2 = st.columns(2)
+      if HAS_PLOTLY:
+        col_graf1, col_graf2 = st.columns(2)
 
-      with col_graf1:
-        st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
-        df_estado = (
-            df_solicitudes.groupby("estado").size().reset_index(name="cantidad")
-        )
-        fig_estado = px.pie(
-            df_estado,
-            values="cantidad",
-            names="estado",
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Set2,
-        )
-        fig_estado.update_traces(
-            textposition="inside", textinfo="percent+label"
-        )
-        fig_estado.update_layout(
-            margin=dict(t=20, b=20, l=10, r=10), showlegend=True
-        )
-        st.plotly_chart(fig_estado, use_container_width=True)
+        with col_graf1:
+          st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
+          df_estado = (
+              df_solicitudes.groupby("estado")
+              .size()
+              .reset_index(name="cantidad")
+          )
+          fig_estado = px.pie(
+              df_estado,
+              values="cantidad",
+              names="estado",
+              hole=0.4,
+              color_discrete_sequence=px.colors.qualitative.Set2,
+          )
+          fig_estado.update_traces(
+              textposition="inside", textinfo="percent+label"
+          )
+          fig_estado.update_layout(
+              margin=dict(t=20, b=20, l=10, r=10), showlegend=True
+          )
+          st.plotly_chart(fig_estado, use_container_width=True)
 
-      with col_graf2:
-        st.markdown("##### 🏪 Capital Colocado por Comercio Aliado")
-        df_comercio = (
-            df_solicitudes.groupby("comercio")["monto_compra"]
-            .sum()
-            .reset_index()
+        with col_graf2:
+          st.markdown("##### 🏪 Capital Colocado por Comercio Aliado")
+          df_comercio = (
+              df_solicitudes.groupby("comercio")["monto_compra"]
+              .sum()
+              .reset_index()
+          )
+          fig_comercio = px.bar(
+              df_comercio,
+              x="monto_compra",
+              y="comercio",
+              orientation="h",
+              text_auto=".2s",
+              labels={"monto_compra": "Monto ($ COP)", "comercio": "Comercio"},
+              color="monto_compra",
+              color_continuous_scale="Blues",
+          )
+          fig_comercio.update_layout(
+              xaxis_title="Monto Colocado ($ COP)",
+              yaxis_title="",
+              margin=dict(t=20, b=20, l=10, r=10),
+              coloraxis_showscale=False,
+          )
+          st.plotly_chart(fig_comercio, use_container_width=True)
+
+        st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
+
+        capital_total = float(df_solicitudes["monto_compra"].sum())
+        saldo_pendiente = float(df_solicitudes["saldo_pendiente"].sum())
+        capital_recuperado = max(0.0, capital_total - saldo_pendiente)
+
+        df_balance = pd.DataFrame({
+            "Concepto": [
+                "Capital Recuperado / Cobrado",
+                "Saldo Pendiente por Cobrar",
+            ],
+            "Monto ($ COP)": [capital_recuperado, saldo_pendiente],
+        })
+
+        fig_balance = px.bar(
+            df_balance,
+            x="Concepto",
+            y="Monto ($ COP)",
+            color="Concepto",
+            text_auto=",.0f",
+            color_discrete_map={
+                "Capital Recuperado / Cobrado": "#2ecc71",
+                "Saldo Pendiente por Cobrar": "#e74c3c",
+            },
         )
-        fig_comercio = px.bar(
-            df_comercio,
-            x="monto_compra",
-            y="comercio",
-            orientation="h",
-            text_auto=".2s",
-            labels={"monto_compra": "Monto ($ COP)", "comercio": "Comercio"},
-            color="monto_compra",
-            color_continuous_scale="Blues",
+        fig_balance.update_layout(
+            showlegend=False, margin=dict(t=20, b=20, l=10, r=10)
         )
-        fig_comercio.update_layout(
-            xaxis_title="Monto Colocado ($ COP)",
-            yaxis_title="",
-            margin=dict(t=20, b=20, l=10, r=10),
-            coloraxis_showscale=False,
+        st.plotly_chart(fig_balance, use_container_width=True)
+      else:
+        # Gráficas Nativas de Streamlit si Plotly no está instalado
+        col_g1, col_g2 = st.columns(2)
+
+        with col_g1:
+          st.markdown("##### 🛡️ Resumen por Estado de Crédito")
+          df_est_native = df_solicitudes["estado"].value_counts().reset_index()
+          df_est_native.columns = ["Estado", "Cantidad de Créditos"]
+          st.dataframe(df_est_native, use_container_width=True, hide_index=True)
+
+        with col_g2:
+          st.markdown("##### 🏪 Capital por Comercio Aliado")
+          df_com_native = (
+              df_solicitudes.groupby("comercio")["monto_compra"]
+              .sum()
+              .reset_index()
+          )
+          st.bar_chart(
+              df_com_native.set_index("comercio"), use_container_width=True
+          )
+
+        st.markdown("##### 💰 Capital Recuperado vs. Pendiente por Cobrar")
+        cap_tot = float(df_solicitudes["monto_compra"].sum())
+        sal_pend = float(df_solicitudes["saldo_pendiente"].sum())
+        cap_rec = max(0.0, cap_tot - sal_pend)
+
+        df_bal_native = pd.DataFrame(
+            {"Monto ($ COP)": [cap_rec, sal_pend]},
+            index=["Capital Recuperado / Cobrado", "Saldo Pendiente por Cobrar"],
         )
-        st.plotly_chart(fig_comercio, use_container_width=True)
-
-      st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
-
-      capital_total = float(df_solicitudes["monto_compra"].sum())
-      saldo_pendiente = float(df_solicitudes["saldo_pendiente"].sum())
-      capital_recuperado = max(0.0, capital_total - saldo_pendiente)
-
-      df_balance = pd.DataFrame({
-          "Concepto": [
-              "Capital Recuperado / Cobrado",
-              "Saldo Pendiente por Cobrar",
-          ],
-          "Monto ($ COP)": [capital_recuperado, saldo_pendiente],
-      })
-
-      fig_balance = px.bar(
-          df_balance,
-          x="Concepto",
-          y="Monto ($ COP)",
-          color="Concepto",
-          text_auto=",.0f",
-          color_discrete_map={
-              "Capital Recuperado / Cobrado": "#2ecc71",
-              "Saldo Pendiente por Cobrar": "#e74c3c",
-          },
-      )
-      fig_balance.update_layout(
-          showlegend=False, margin=dict(t=20, b=20, l=10, r=10)
-      )
-      st.plotly_chart(fig_balance, use_container_width=True)
+        st.bar_chart(df_bal_native, use_container_width=True)
 
     else:
       st.info("No hay créditos registrados aún para generar gráficos.")
