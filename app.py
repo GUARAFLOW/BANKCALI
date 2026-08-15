@@ -1,7 +1,9 @@
+import os
+import sys
 import streamlit as st
 from sqlalchemy import text
 
-# Importar módulos independientes desde la carpeta modulos
+# Importaciones limpias directamente desde la carpeta modulos
 from modulos.clientes import render_gestion_clientes
 from modulos.cobranzas import render_control_cartera
 from modulos.comercios import render_gestion_comercios
@@ -11,10 +13,26 @@ from modulos.pagos import render_registro_pagos
 from modulos.simulador import render_aprobacion_creditos, render_simulador
 from modulos.usuarios import render_gestion_usuarios
 
-# Configuración general de la aplicación
+# Configuración general de la página
 st.set_page_config(
     page_title="BankCali - Sistema de Créditos", page_icon="💳", layout="wide"
 )
+
+
+# Búsqueda dinámica del archivo de logo
+def obtener_ruta_logo():
+  posibles_nombres = [
+      "LOGOBANKCALI.jpeg",
+      "logobankcali.jpeg",
+      "logobankcali.jpeg.jpeg",
+  ]
+  for nombre in posibles_nombres:
+    if os.path.exists(nombre):
+      return nombre
+  return None
+
+
+ruta_logo = obtener_ruta_logo()
 
 # Inicialización del estado de sesión
 if "autenticado" not in st.session_state:
@@ -27,11 +45,21 @@ if "autenticado" not in st.session_state:
 # PANTALLA DE AUTENTICACIÓN / LOGIN
 # -----------------------------------------------------------------------------
 if not st.session_state["autenticado"]:
-  st.title("🔐 Sistema de Gestión de Créditos - BankCali")
-  st.markdown("Ingrese sus credenciales para acceder a la plataforma.")
-
   col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
   with col_l2:
+    if ruta_logo:
+      st.image(ruta_logo, use_container_width=True)
+
+    st.markdown(
+        "<h2 style='text-align: center;'>🔐 Sistema de Créditos - BankCali</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align: center; color: gray;'>Ingrese sus credenciales"
+        " para acceder a la plataforma.</p>",
+        unsafe_allow_html=True,
+    )
+
     with st.form("login_form"):
       user_input = st.text_input("Usuario")
       pass_input = st.text_input("Contraseña", type="password")
@@ -60,6 +88,9 @@ if not st.session_state["autenticado"]:
 # MENÚ LATERAL Y NAVEGACIÓN
 # -----------------------------------------------------------------------------
 es_admin = st.session_state["rol"] == "ADMINISTRADOR"
+
+if ruta_logo:
+  st.sidebar.image(ruta_logo, use_container_width=True)
 
 st.sidebar.title("💳 BankCali")
 st.sidebar.markdown(f"**Usuario:** {st.session_state['usuario']}")
