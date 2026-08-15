@@ -269,7 +269,6 @@ elif opcion == "4. Gestión General de Clientes" and es_admin:
     st.dataframe(df_cli, use_container_width=True)
 
 # --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
-# --- MÓDULO 5: GESTIÓN DE ALMACENES (SOLO ADMIN) ---
 elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     st.header("🏢 Administración de Comercios Aliados")
     st.markdown("Crea y gestiona el directorio de almacenes autorizados para otorgar créditos.")
@@ -316,6 +315,33 @@ elif opcion == "5. Gestión de Almacenes Aliados" and es_admin:
     
     if not df_com_all.empty:
         st.dataframe(df_com_all, use_container_width=True, hide_index=True)
+    else:
+        st.info("Aún no hay comercios registrados con el nuevo formato.")
+        if not df_com_all.empty:
+        st.dataframe(df_com_all, use_container_width=True, hide_index=True)
+        
+        # --- SECCIÓN DE BORRADO DE COMERCIOS ---
+        st.markdown("---")
+        st.subheader("🗑️ Eliminar un Comercio")
+        
+        # Creamos una lista bonita para el desplegable combinando Nombre y NIT
+        opciones_borrar = dict(zip(df_com_all['id'], df_com_all['nombre'] + " (NIT: " + df_com_all['nit'].astype(str) + ")"))
+        
+        # Selector de comercio
+        id_a_borrar = st.selectbox("Selecciona el comercio que deseas eliminar:", options=list(opciones_borrar.keys()), format_func=lambda x: opciones_borrar[x])
+        
+        # Botón de confirmación
+        if st.button("❌ Borrar Comercio Definitivamente"):
+            try:
+                with conn.session as s:
+                    # Ejecutamos el comando SQL para borrar por su ID único
+                    s.execute(text("DELETE FROM comercios WHERE id = :id"), {"id": id_a_borrar})
+                    s.commit()
+                st.success("✅ Comercio eliminado correctamente del sistema.")
+                st.rerun() # Esto recarga la pantalla mágicamente para actualizar la tabla
+            except Exception as e:
+                st.error(f"Error al eliminar: {e}")
+
     else:
         st.info("Aún no hay comercios registrados con el nuevo formato.")
 
