@@ -1,5 +1,13 @@
 import streamlit as st
 from sqlalchemy import text
+import os
+import sys
+
+# Forzar a Python a buscar módulos en el directorio actual
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import streamlit as st
+from sqlalchemy import text
 
 # Importar módulos independientes desde la carpeta modulos
 from modulos.clientes import render_gestion_clientes
