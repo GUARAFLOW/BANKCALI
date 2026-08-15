@@ -629,9 +629,9 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         color: black !important;
         padding: 10px !important;
     }
-}
-</style>
-""", unsafe_allow_html=True)
+      }
+     </style>
+     """, unsafe_allow_html=True)
 
     # 2. Renderizado del Ticket HTML
     st.markdown(f"""
