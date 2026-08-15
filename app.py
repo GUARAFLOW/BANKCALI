@@ -57,45 +57,51 @@ si "autenticado" no en calle.session_state:
     calle.session_state.rol = NINGUNO
     calle.session_state.nombre = NINGUNO
 
-# --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
-calle.sidebar.title("🔐 Control de Acceso")
+# --- 1. INICIALIZAR SESIÓN ---
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+    st.session_state.rol = None
+    st.session_state.nombre = None
 
-si no calle.session_state.autenticado:
-    calle.sidebar.markdown("Ingresa tus credenciales:")
-    doc_login = calle.sidebar.text_input("Documento de Usuario")
-    pin_login = calle.sidebar.text_input("PIN de Acceso", tipo="password")
+# --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
+st.sidebar.title("🔐 Control de Acceso")
+
+if not st.session_state.autenticado:
+    st.sidebar.markdown("Ingresa tus credenciales:")
+    doc_login = st.sidebar.text_input("Documento de Usuario")
+    pin_login = st.sidebar.text_input("PIN de Acceso", type="password")
     
-    si calle.sidebar.button("Iniciar Sesión"):
-        si doc_login y pin_login:
-            intentar:
-                usuario_db = conn.consulta("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", parametros={"doc": doc_login, "pin": pin_login}, ttl=0)
+    if st.sidebar.button("Iniciar Sesión"):
+        if doc_login and pin_login:
+            try:
+                usuario_db = conn.query("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", params={"doc": doc_login, "pin": pin_login}, ttl=0)
                 
-                si no usuario_db.vacio:
-                    calle.session_state.autenticado = VERDADERO
-                    calle.session_state.rol = usuario_db.iloc[0]['rol']
-                    calle.session_state.nombre = usuario_db.iloc[0]['nombre']
-                    calle.rerun()
-                sino:
-                    calle.sidebar.error("❌ Documento o PIN incorrectos.")
-            excepto Excepción como e:
-                calle.sidebar.error("Error al conectar con la base de datos.")
-        sino:
-            calle.sidebar.warning("⚠️ Completa ambos campos.")
+                if not usuario_db.empty:
+                    st.session_state.autenticado = True
+                    st.session_state.rol = usuario_db.iloc[0]['rol']
+                    st.session_state.nombre = usuario_db.iloc[0]['nombre']
+                    st.rerun()
+                else:
+                    st.sidebar.error("❌ Documento o PIN incorrectos.")
+            except Exception as e:
+                st.sidebar.error("Error al conectar con la base de datos.")
+        else:
+            st.sidebar.warning("⚠️ Completa ambos campos.")
             
-    calle.warning("🔒 **Sistema Bloqueado**. Por favor, inicia sesión en el panel lateral.")
-    calle.stop()
+    st.warning("🔒 **Sistema Bloqueado**. Por favor, inicia sesión en el panel lateral para acceder.")
+    st.stop()
 
 # --- 3. SI EL INICIO DE SESIÓN FUE EXITOSO ---
-calle.sidebar.success(f"👤 Conectado como:\n**{calle.session_state.nombre}**\n({calle.session_state.rol})")
+st.sidebar.success(f"👤 Conectado como:\n**{st.session_state.nombre}**\n({st.session_state.rol})")
 
-si calle.sidebar.button("Cerrar Sesión"):
-    calle.session_state.autenticado = FALSO
-    calle.session_state.rol = NINGUNO
-    calle.session_state.nombre = NINGUNO
-    calle.rerun()
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state.autenticado = False
+    st.session_state.rol = None
+    st.session_state.nombre = None
+    st.rerun()
 
-es_admin = (calle.session_state.rol == "Administrador")
-calle.sidebar.markdown("---")
+es_admin = (st.session_state.rol == "Administrador")
+st.sidebar.markdown("---")
 
 # Opciones base para los Comercios Aliados
 menu_opciones = [
