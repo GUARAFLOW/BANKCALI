@@ -1040,42 +1040,110 @@ elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
 # MÓDULO 7: PANEL GENERAL DE ADMINISTRACIÓN (SOLO ADMIN)
 # =============================================================================
 elif opcion == "7. Panel General de Administración" and es_admin:
-  st.header("📈 Dashboard de Métricas y Rendimiento Financiero")
-  st.markdown("Visión estratégica del negocio en Puerto Rico (Caquetá).")
-  st.markdown("---")
-
-  try:
-    df_tot_sol = conn.query(
-        "SELECT monto_compra, total_pagar, saldo_pendiente FROM solicitudes",
-        ttl=0,
-    )
-    df_tot_cli = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
-
-    total_colocado = (
-        df_tot_sol["monto_compra"].sum() if not df_tot_sol.empty else 0
-    )
-    total_saldo = (
-        df_tot_sol["saldo_pendiente"].sum() if not df_tot_sol.empty else 0
-    )
-    total_cupos = (
-        df_tot_cli["cupo_aprobado"].sum() if not df_tot_cli.empty else 0
-    )
-
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
-    kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
-    kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
-    import plotly.express as px
-    import pandas as pd
-
+    st.header("📈 Dashboard de Métricas y Rendimiento Financiero")
+    st.markdown("Visión estratégica del negocio en Puerto Rico (Caquetá).")
     st.markdown("---")
-    st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
 
-    # Reemplaza 'df_creditos' por el nombre de tu DataFrame o consulta SQL de créditos
-    # Asegúrate de que df_creditos tenga las columnas: 'estado', 'comercio', 'valor_cuota', 'saldo_pendiente', 'monto'
+    try:
+        # Cargar todos los datos de solicitudes para métricas y gráficas
+        df_solicitudes = conn.query(
+            "SELECT id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado FROM solicitudes",
+            ttl=0
+        )
+        df_clientes_tot = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
 
-    if 'df_creditos' in locals() and not df_creditos.empty:
-    col_graf1, col_graf2 = st.columns(2)
+        # Calculo de KPIs principales
+        total_colocado = df_solicitudes["monto_compra"].sum() if not df_solicitudes.empty else 0
+        total_saldo = df_solicitudes["saldo_pendiente"].sum() if not df_solicitudes.empty else 0
+        total_cupos = df_clientes_tot["cupo_aprobado"].sum() if not df_clientes_tot.empty else 0
+
+        kpi1, kpi2, kpi3 = st.columns(3)
+        kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
+        kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
+        kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
+
+        st.markdown("---")
+        st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
+
+        if not df_solicitudes.empty:
+            import plotly.express as px
+
+            col_graf1, col_graf2 = st.columns(2)
+
+            # -------------------------------------------------------------
+            # 1. GRÁFICA DE RIESGO / ESTADO DE CARTERA
+            # -------------------------------------------------------------
+            with col_graf1:
+                st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
+                df_estado = df_solicitudes.groupby("estado").size().reset_index(name="cantidad")
+                fig_estado = px.pie(
+                    df_estado, 
+                    values="cantidad", 
+                    names="estado", 
+                    hole=0.4,
+                    color_discrete_sequence=px.colors.qualitative.Set2
+                )
+                fig_estado.update_traces(textposition='inside', textinfo='percent+label')
+                fig_estado.update_layout(margin=dict(t=20, b=20, l=10, r=10), showlegend=True)
+                st.plotly_chart(fig_estado, use_container_width=True)
+
+            # -------------------------------------------------------------
+            # 2. GRÁFICA DE VENTAS POR COMERCIO
+            # -------------------------------------------------------------
+            with col_graf2:
+                st.markdown("##### 🏪 Capital Colocado por Comercio Aliado")
+                df_comercio = df_solicitudes.groupby("comercio")["monto_compra"].sum().reset_index()
+                fig_comercio = px.bar(
+                    df_comercio,
+                    x="monto_compra",
+                    y="comercio",
+                    orientation="h",
+                    text_auto='.2s',
+                    labels={"monto_compra": "Monto ($ COP)", "comercio": "Comercio"},
+                    color="monto_compra",
+                    color_continuous_scale="Blues"
+                )
+                fig_comercio.update_layout(
+                    xaxis_title="Monto Colocado ($ COP)", 
+                    yaxis_title="", 
+                    margin=dict(t=20, b=20, l=10, r=10),
+                    coloraxis_showscale=False
+                )
+                st.plotly_chart(fig_comercio, use_container_width=True)
+
+            # -------------------------------------------------------------
+            # 3. BALANCE GENERAL: RECUPERADO VS PENDIENTE
+            # -------------------------------------------------------------
+            st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
+            
+            capital_total = float(df_solicitudes['monto_compra'].sum())
+            saldo_pendiente = float(df_solicitudes['saldo_pendiente'].sum())
+            capital_recuperado = max(0.0, capital_total - saldo_pendiente)
+            
+            df_balance = pd.DataFrame({
+                'Concepto': ['Capital Recuperado / Cobrado', 'Saldo Pendiente por Cobrar'],
+                'Monto ($ COP)': [capital_recuperado, saldo_pendiente]
+            })
+
+            fig_balance = px.bar(
+                df_balance,
+                x='Concepto',
+                y='Monto ($ COP)',
+                color='Concepto',
+                text_auto=',.0f',
+                color_discrete_map={
+                    'Capital Recuperado / Cobrado': '#2ecc71',
+                    'Saldo Pendiente por Cobrar': '#e74c3c'
+                }
+            )
+            fig_balance.update_layout(showlegend=False, margin=dict(t=20, b=20, l=10, r=10))
+            st.plotly_chart(fig_balance, use_container_width=True)
+
+        else:
+            st.info("No hay créditos registrados aún para generar gráficos.")
+
+    except Exception as e:
+        st.error(f"Error calculando indicadores o generando gráficas: {e}")
 
     # -------------------------------------------------------------
     # 1. GRÁFICA DE PÉRDIDAS Y ESTADO DE CARTERA (Donut Chart)
