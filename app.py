@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timedelta
 import random
 import pandas as pd
@@ -6,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 
-#Intentar importar Plotly opcionalmente
+# Intentar importar Plotly opcionalmente
 try:
   import plotly.express as px
 
@@ -25,7 +26,7 @@ st.set_page_config(
 )
 
 # =============================================================================
-# ESTILOS CSS PERSONALIZADOS Y FORMATO TICKET POS
+# ESTILOS CSS PERSONALIZADOS, FORMATO TICKET POS Y ESTILOS DE IMPRESIÓN
 # =============================================================================
 st.markdown(
     """
@@ -73,6 +74,45 @@ st.markdown(
             max-width: 420px;
             margin: 0 auto;
             box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+        .btn-print {
+            display: block;
+            width: 100%;
+            max-width: 420px;
+            margin: 15px auto 0 auto;
+            background-color: #1E3A8A;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+        }
+        .btn-print:hover {
+            background-color: #0A192F;
+            color: #38BDF8;
+        }
+
+        /* CONFIGURACIÓN DE IMPRESIÓN (MEDIOS IMPRESOS) */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .printable-area, .printable-area * {
+                visibility: visible;
+            }
+            .printable-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            .no-print {
+                display: none !important;
+            }
         }
     </style>
 """,
@@ -184,9 +224,19 @@ def generar_tabla_amortizacion(
 
 
 # =============================================================================
-# CONEXIÓN Y SESIÓN
+# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
 # =============================================================================
 conn = st.connection("supabase", type="sql")
+
+# Asegurar la columna de logo_base64 en la tabla comercios
+try:
+  with conn.session as s:
+    s.execute(
+        text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
+    )
+    s.commit()
+except Exception:
+  pass
 
 if "autenticado" not in st.session_state:
   st.session_state.autenticado = False
@@ -262,10 +312,7 @@ if not st.session_state.autenticado:
     try:
       st.image("LOGOBANKCALI.jpeg", use_container_width=True)
     except Exception:
-      st.error(
-          "No se pudo cargar el logo de BankCali. Verifica que el archivo"
-          " LOGOBANKCALI.jpeg esté en la carpeta."
-      )
+      st.error("No se pudo cargar el logo principal de BankCali.")
 
   st.stop()
 
@@ -330,7 +377,7 @@ st.markdown(
 )
 
 # =============================================================================
-# MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET
+# MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE CON LOGO
 # =============================================================================
 if opcion == "1. Simular / Solicitar Crédito (POS)":
   st.header("🏪 Módulo de Punto de Venta (Comercio Aliado)")
@@ -341,7 +388,9 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
   st.markdown("---")
 
   try:
-    df_comercios = conn.query("SELECT nombre, comision FROM comercios", ttl=0)
+    df_comercios = conn.query(
+        "SELECT nombre, comision, logo_base64 FROM comercios", ttl=0
+    )
   except Exception:
     df_comercios = pd.DataFrame()
 
@@ -370,11 +419,17 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             "Seleccione el Comercio Aliado", df_comercios["nombre"].tolist()
         )
 
-      match_comision = df_comercios[df_comercios["nombre"] == comercio_sel][
-          "comision"
-      ]
+      match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
       comercio_comercio = (
-          float(match_comision.values[0]) if not match_comision.empty else 5.0
+          float(match_comercio["comision"].values[0])
+          if not match_comercio.empty
+          else 5.0
+      )
+      logo_comercio = (
+          match_comercio["logo_base64"].values[0]
+          if not match_comercio.empty
+          and "logo_base64" in match_comercio.columns
+          else None
       )
 
       cedula = st.text_input("Número de Cédula del Cliente")
@@ -530,6 +585,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
               "id": id_credito,
               "fecha": fecha_hoy,
               "comercio": comercio_sel,
+              "logo_comercio": logo_comercio,
               "cliente": nombre_cliente,
               "cedula": cedula,
               "monto": monto_compra,
@@ -547,25 +603,36 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       st.markdown("---")
       st.subheader("🧾 Comprobante POS de Venta (Imprimible)")
 
+      # Renderizar logo del comercio o logo estándar
+      logo_html = ""
+      if t.get("logo_comercio"):
+        logo_html = f'<img src="{t["logo_comercio"]}" style="max-height: 70px; margin-bottom: 8px; border-radius: 4px;" /><br>'
+
       ticket_html = f"""
-            <div class="pos-ticket">
-                <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
-                    <h3 style="margin: 0; color: #1E3A8A;">BANKCALI</h3>
-                    <p style="margin: 2px 0; font-size: 0.8rem;">Puerto Rico, Caquetá</p>
-                    <p style="margin: 2px 0; font-size: 0.75rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
+            <div class="printable-area">
+                <div class="pos-ticket">
+                    <div style="text-align: center; border-bottom: 1px dashed #333; padding-bottom: 8px; margin-bottom: 10px;">
+                        {logo_html}
+                        <h3 style="margin: 0; color: #1E3A8A;">{t['comercio'].upper()}</h3>
+                        <p style="margin: 2px 0; font-size: 0.8rem; color: #555;">Financiado por <strong>BANKCALI</strong></p>
+                        <p style="margin: 2px 0; font-size: 0.75rem;">Puerto Rico, Caquetá</p>
+                        <p style="margin: 4px 0 0 0; font-size: 0.8rem;"><strong>COMPROBANTE DE COMPRA A CRÉDITO</strong></p>
+                    </div>
+                    <p style="margin: 3px 0;"><strong>N° Crédito:</strong> {t['id']}</p>
+                    <p style="margin: 3px 0;"><strong>Fecha:</strong> {t['fecha']}</p>
+                    <p style="margin: 3px 0;"><strong>Cliente:</strong> {t['cliente']}</p>
+                    <p style="margin: 3px 0;"><strong>Cédula:</strong> {t['cedula']}</p>
+                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
+                    <p style="margin: 3px 0;"><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
+                    <p style="margin: 3px 0;"><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
+                    <p style="margin: 3px 0;"><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
+                    <p style="margin: 3px 0;"><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
+                    <hr style="border: 0.5px dashed #333; margin: 8px 0;">
+                    <p style="font-size: 0.72rem; text-align: center; margin: 0;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
                 </div>
-                <p><strong>N° Crédito:</strong> {t['id']}</p>
-                <p><strong>Fecha:</strong> {t['fecha']}</p>
-                <p><strong>Comercio:</strong> {t['comercio']}</p>
-                <p><strong>Cliente:</strong> {t['cliente']}</p>
-                <p><strong>Cédula:</strong> {t['cedula']}</p>
-                <hr style="border: 0.5px dashed #333;">
-                <p><strong>Monto Compra:</strong> ${t['monto']:,.0f} COP</p>
-                <p><strong>N° Cuotas:</strong> {t['cuotas']} Quincenales</p>
-                <p><strong>Valor Cuota:</strong> ${t['valor_cuota']:,.0f} COP</p>
-                <p><strong>Total a Pagar:</strong> ${t['total']:,.0f} COP</p>
-                <hr style="border: 0.5px dashed #333;">
-                <p style="font-size: 0.75rem; text-align: center;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
+                <div class="no-print" style="text-align: center;">
+                    <button class="btn-print" onclick="window.print()">🖨️ Imprimir Ticket / Guardar PDF</button>
+                </div>
             </div>
             """
       st.markdown(ticket_html, unsafe_allow_html=True)
@@ -1001,11 +1068,11 @@ elif opcion == "5. Gestión General de Clientes" and es_admin:
     st.error(f"Error al cargar clientes: {e}")
 
 # =============================================================================
-# MÓDULO 6: GESTIÓN DE ALMACENES ALIADOS (SOLO ADMIN)
+# MÓDULO 6: GESTIÓN DE ALMACENES ALIADOS CON SUBIDA DE LOGO (SOLO ADMIN)
 # =============================================================================
 elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
   st.header("🏪 Administración de Comercios Aliados")
-  st.markdown("Registro de tiendas, asignación de comisiones y auditoría.")
+  st.markdown("Registro de tiendas, asignación de comisiones, logos y auditoría.")
   st.markdown("---")
 
   col_com1, col_com2 = st.columns([2, 1])
@@ -1014,38 +1081,67 @@ elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
     st.subheader("Tiendas Actualmente Aliadas")
     try:
       df_comercios_list = conn.query(
-          "SELECT nombre, comision FROM comercios", ttl=0
+          "SELECT nombre, comision, logo_base64 FROM comercios", ttl=0
       )
-      st.dataframe(
-          df_comercios_list, use_container_width=True, hide_index=True
-      )
+      if not df_comercios_list.empty:
+        # Formatear la columna de logo para mostrar indicador
+        df_comercios_list["Logo Cargado"] = df_comercios_list[
+            "logo_base64"
+        ].apply(
+            lambda x: "✅ Sí"
+            if pd.notnull(x) and str(x).strip() != ""
+            else "❌ No"
+        )
+        st.dataframe(
+            df_comercios_list[["nombre", "comision", "Logo Cargado"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+      else:
+        st.info("No hay comercios aliados registrados.")
     except Exception as e:
       st.error(f"Error al cargar comercios: {e}")
 
   with col_com2:
-    st.subheader("➕ Nuevo Comercio")
-    nom_com = st.text_input("Nombre de la Tienda")
+    st.subheader("➕ Nuevo Comercio Aliado")
+    nom_com = st.text_input("Nombre de la Tienda *")
     com_pct = st.number_input(
-        "Comisión (%)", min_value=1.0, max_value=20.0, value=5.0, step=0.5
+        "Comisión (%) *", min_value=1.0, max_value=20.0, value=5.0, step=0.5
+    )
+    logo_file = st.file_uploader(
+        "🖼️ Logo del Comercio (Opcional)", type=["png", "jpg", "jpeg"]
     )
 
+    logo_b64 = None
+    if logo_file is not None:
+      bytes_data = logo_file.read()
+      encoded_string = base64.b64encode(bytes_data).decode()
+      mime_type = logo_file.type
+      logo_b64 = f"data:{mime_type};base64,{encoded_string}"
+      st.image(
+          logo_file, caption="Vista previa del Logo", use_container_width=True
+      )
+
     if st.button("💾 Registrar Comercio", use_container_width=True):
-      if nom_com:
+      if nom_com.strip():
         try:
           with conn.session as s:
             s.execute(
-                text(
-                    "INSERT INTO comercios (nombre, comision) VALUES (:n, :c)"
-                ),
-                {"n": nom_com.strip(), "c": com_pct},
+                text("""
+                            INSERT INTO comercios (nombre, comision, logo_base64) 
+                            VALUES (:n, :c, :l)
+                        """),
+                {"n": nom_com.strip(), "c": com_pct, "l": logo_b64},
             )
             s.commit()
-          st.success(f"✅ Comercio **{nom_com}** registrado exitosamente.")
+          st.success(
+              f"✅ Comercio **{nom_com}** registrado exitosamente con su logo."
+          )
           st.rerun()
         except Exception as e:
           st.error(f"Error al guardar comercio: {e}")
       else:
-        st.warning("Escribe el nombre del comercio.")
+        st.warning("⚠️ Escribe el nombre del comercio.")
 
 # =============================================================================
 # MÓDULO 7: PANEL GENERAL DE ADMINISTRACIÓN (SOLO ADMIN)
@@ -1166,7 +1262,7 @@ elif opcion == "7. Panel General de Administración" and es_admin:
         )
         st.plotly_chart(fig_balance, use_container_width=True)
       else:
-        # Gráficas Nativas de Streamlit si Plotly no está instalado
+        # Gráficas Nativas de Streamlit
         col_g1, col_g2 = st.columns(2)
 
         with col_g1:
