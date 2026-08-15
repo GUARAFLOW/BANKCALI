@@ -196,7 +196,6 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             st.markdown("##### 👤 Datos del Cliente")
             comercio_sel = st.selectbox("Seleccione el Comercio Aliado", df_comercios['nombre'].tolist())
             
-            # Extracción segura de la comisión para evitar NameError
             match_comision = df_comercios[df_comercios['nombre'] == comercio_sel]['comision']
             comercio_comercio = float(match_comision.values[0]) if not match_comision.empty else 5.0
             
@@ -286,26 +285,33 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación y Registro de Nuevo Cliente")
     st.markdown("Sistema automatizado de scoring crediticio basado en ingresos declarados.")
-    st.info("💡 **Política de Crédito:** Ingresos $\le$ \$1.000.000 COP reciben un cupo base de \$80.000 COP. Ingresos superiores reciben un cupo equivalente al 20%.")
+    st.info("💡 **Política de Crédito:** Ingresos $\le$ \$1.000.000 COP reciben un cupo base de \$80.000 COP. Ingresos superiores reciben un cupo equivalente al 20%. Todos los campos son obligatorios.")
     st.markdown("---")
     
     col_e1, col_e2 = st.columns(2, gap="large")
     with col_e1:
         st.markdown("##### 🪪 Información Personal")
-        c_cedula = st.text_input("Número de Cédula")
-        c_nombre = st.text_input("Nombre Completo")
-        c_celular = st.text_input("Número de Celular")
+        c_cedula = st.text_input("Número de Cédula *")
+        c_nombre = st.text_input("Nombre Completo *")
+        c_celular = st.text_input("Número de Celular *")
+        c_direccion = st.text_input("Dirección de Residencia *")
         
     with col_e2:
         st.markdown("##### 💼 Perfil Económico")
-        c_ocupacion = st.selectbox("Actividad Económica", [
-            "Empleado Público / Pensionado", 
-            "Empleado Formal (Empresa)", 
-            "Comerciante / Ganadero", 
-            "Independiente / Agrícola"
+        c_ocupacion = st.selectbox("Actividad Económica *", [
+            "Seleccione una actividad...",
+            "Empleado Público / Oficial", 
+            "Empleado Privado (Formal)", 
+            "Comerciante / Dueño de Negocio", 
+            "Independiente / Prestador de Servicios",
+            "Ganadero / Pecuario",
+            "Agricultor / Productor Agrícola",
+            "Pensionado / Jubilado",
+            "Transportador / Conductor",
+            "Otro / Oficios Varios"
         ])
-        c_ingresos = st.number_input("Ingresos Mensuales ($ COP)", min_value=100000, max_value=20000000, step=50000, value=1000000)
-        c_gastos = st.number_input("Gastos Mensuales Estimados ($ COP)", min_value=0, max_value=15000000, step=50000, value=400000)
+        c_ingresos = st.number_input("Ingresos Mensuales ($ COP) *", min_value=0, max_value=20000000, step=50000, value=1000000)
+        c_gastos = st.number_input("Gastos Mensuales Estimados ($ COP) *", min_value=0, max_value=15000000, step=50000, value=400000)
 
     cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(c_ingresos)
     
@@ -317,23 +323,43 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     col_res2.success(f"🟢 **{nivel_riesgo}**\n\n{mensaje_eval}")
     
     st.markdown("---")
-    if st.button("🚀 Aprobar y Registrar Cliente en el Sistema", use_container_width=True):
-        if c_cedula and c_nombre and c_celular:
-            try:
-                with conn.session as s:
-                    s.execute(text("""
-                        INSERT INTO clientes (cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
-                        VALUES (:ced, :nom, :cel, :ocu, :ing, :gas, :c_apr, :c_dis)
-                    """), {"ced": c_cedula, "nom": c_nombre, "cel": c_celular, "ocu": c_ocupacion, "ing": c_ingresos, "gas": c_gastos, "c_apr": cupo_sugerido, "c_dis": cupo_sugerido})
-                    s.commit()
-                st.balloons()
-                st.success(f"🎉 Cliente **{c_nombre}** registrado de forma exitosa con un cupo asignado de **${cupo_sugerido:,.0f} COP**.")
-            except IntegrityError:
-                st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
-            except Exception as e:
-                st.error(f"Error de base de datos: {e}")
-        else:
-            st.error("⚠️ Por favor completa los campos obligatorios básicos (Cédula, Nombre, Celular).")
+    
+    # Validar que todos los campos obligatorios estén llenos correctamente
+    campos_completos = (
+        c_cedula.strip() != "" and 
+        c_nombre.strip() != "" and 
+        c_celular.strip() != "" and 
+        c_direccion.strip() != "" and 
+        c_ocupacion != "Seleccione una actividad..."
+    )
+
+    if not campos_completos:
+        st.warning("⚠️ **Atención:** Para poder registrar al cliente, debes completar obligatoriamente todos los campos marcados con asterisco (*) y seleccionar una actividad económica válida.")
+
+    if st.button("🚀 Aprobar y Registrar Cliente en el Sistema", use_container_width=True, disabled=not campos_completos):
+        try:
+            with conn.session as s:
+                s.execute(text("""
+                    INSERT INTO clientes (cedula, nombre, celular, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible) 
+                    VALUES (:ced, :nom, :cel, :dir, :ocu, :ing, :gas, :c_apr, :c_dis)
+                ​"""), {
+                    "ced": c_cedula, 
+                    "nom": c_nombre, 
+                    "cel": c_celular, 
+                    "dir": c_direccion,
+                    "ocu": c_ocupacion, 
+                    "ing": c_ingresos, 
+                    "gas": c_gastos, 
+                    "c_apr": cupo_sugerido, 
+                    "c_dis": cupo_sugerido
+                })
+                s.commit()
+            st.balloons()
+            st.success(f"🎉 Cliente **{c_nombre}** registrado de forma exitosa con un cupo asignado de **${cupo_sugerido:,.0f} COP**.")
+        except IntegrityError:
+            st.error("❌ Ya existe un cliente registrado con ese número de cédula en la base de datos.")
+        except Exception as e:
+            st.error(f"Error de base de datos: {e} (Asegúrate de haber añadido la columna 'direccion' en la tabla 'clientes' de Supabase).")
 
 # --- MÓDULO 3: REGISTRO DE PAGOS (SOLO ADMIN) ---
 elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
@@ -388,7 +414,11 @@ elif opcion == "4. Gestión General de Clientes" and es_admin:
     st.header("👥 Directorio e Historial General de Clientes")
     st.markdown("Visualización completa de la base de datos de clientes registrados y sus cupos actuales.")
     st.markdown("---")
-    df_cli = conn.query("SELECT cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
+    try:
+        df_cli = conn.query("SELECT cedula, nombre, celular, direccion, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
+    except Exception:
+        df_cli = conn.query("SELECT cedula, nombre, celular, ocupacion, ingresos, gastos, cupo_aprobado, cupo_disponible FROM clientes")
+        
     if not df_cli.empty:
         st.dataframe(df_cli, use_container_width=True, hide_index=True)
     else:
