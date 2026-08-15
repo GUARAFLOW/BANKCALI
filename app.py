@@ -600,7 +600,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           st.error("❌ Código OTP incorrecto.")
          
         # =============================================================================
-    # GENERACIÓN Y MUESTRA DEL TICKET POS (A PRUEBA DE NAMEERROR)
+    # GENERACIÓN Y MUESTRA DEL TICKET POS
     # =============================================================================
 
     # 1. Recuperación segura de variables
@@ -626,76 +626,75 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     # 2. Obtención del logo
     logo_html = ""
     try:
-      df_logo = conn.query(
-          "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
-          params={"nom": comercio_nom},
-          ttl=0,
-      )
-      if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-        logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
+        df_logo = conn.query(
+            "SELECT logo_base64 FROM comercios WHERE nombre = :nom",
+            params={"nom": comercio_nom},
+            ttl=0,
+        )
+        if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+            logo_html = f'<img src="{df_logo.iloc[0]["logo_base64"]}" style="max-height: 50px; margin-bottom: 8px;" /><br>'
     except Exception:
-      logo_html = ""
+        logo_html = ""
 
     # 3. Estilos CSS de impresión
     st.markdown("""
-    <style>
-    @media print {
-        [data-testid="stSidebar"], header, footer, .stButton, iframe {
-            display: none !important;
-        }
-        body { background: white !important; }
-        .ticket-pos-box {
-            width: 100% !important;
-            max-width: 320px !important;
-            margin: 0 auto !important;
-            border: 1px solid #000 !important;
-            box-shadow: none !important;
-            background: white !important;
-            color: black !important;
-            padding: 10px !important;
-        }
+<style>
+@media print {
+    [data-testid="stSidebar"], header, footer, .stButton, iframe {
+        display: none !important;
     }
-    </style>
-    """, unsafe_allow_html=True)
+    body { background: white !important; }
+    .ticket-pos-box {
+        width: 100% !important;
+        max-width: 320px !important;
+        margin: 0 auto !important;
+        border: 1px solid #000 !important;
+        box-shadow: none !important;
+        background: white !important;
+        color: black !important;
+        padding: 10px !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
 
-    # 4. Renderizado del Ticket HTML
-    ticket_html = f"""
-    <div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
-        <div style="text-align: center;">
-            {logo_html}
-            <h3 style="margin: 0; color: #0d233a;">{comercio_nom}</h3>
-            <p style="margin: 4px 0; font-size: 12px;">
-                Financiado por <b>BANKCALI</b><br>
-                Puerto Rico, Caquetá<br>
-                <b>COMPROBANTE DE COMPRA A CRÉDITO</b>
-            </p>
-        </div>
-        <hr style="border: none; border-top: 1px dashed #666;">
-        <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-            <b>N° Crédito:</b> {id_cred_str}<br>
-            <b>Fecha:</b> {fecha_str}<br>
-            <b>Cliente:</b> {cliente_nom}<br>
-            <b>Cédula:</b> {cliente_ced}
-        </p>
-        <hr style="border: none; border-top: 1px dashed #666;">
-        <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-            <b>Monto Compra:</b> ${monto_val:,.0f} COP<br>
-            <b>N° Cuotas:</b> {cuotas_val} Quincenales<br>
-            <b>Valor Cuota:</b> ${cuota_val:,.0f} COP<br>
-            <b>Total a Pagar:</b> ${total_val:,.0f} COP
-        </p>
-        <hr style="border: none; border-top: 1px dashed #666;">
-        <p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
-            Firma Digital Verificada vía OTP SMS<br>
-            ¡Gracias por su compra!
-        </p>
-    </div>
-    """
+    # 4. Renderizado del Ticket HTML (sin sangría inicial para evitar formato de código)
+    ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
+<div style="text-align: center;">
+{logo_html}
+<h3 style="margin: 0; color: #0d233a;">{comercio_nom}</h3>
+<p style="margin: 4px 0; font-size: 12px;">
+Financiado por <b>BANKCALI</b><br>
+Puerto Rico, Caquetá<br>
+<b>COMPROBANTE DE COMPRA A CRÉDITO</b>
+</p>
+</div>
+<hr style="border: none; border-top: 1px dashed #666;">
+<p style="font-size: 13px; line-height: 1.6; margin: 0;">
+<b>N° Crédito:</b> {id_cred_str}<br>
+<b>Fecha:</b> {fecha_str}<br>
+<b>Cliente:</b> {cliente_nom}<br>
+<b>Cédula:</b> {cliente_ced}
+</p>
+<hr style="border: none; border-top: 1px dashed #666;">
+<p style="font-size: 13px; line-height: 1.6; margin: 0;">
+<b>Monto Compra:</b> ${monto_val:,.0f} COP<br>
+<b>N° Cuotas:</b> {cuotas_val} Quincenales<br>
+<b>Valor Cuota:</b> ${cuota_val:,.0f} COP<br>
+<b>Total a Pagar:</b> ${total_val:,.0f} COP
+</p>
+<hr style="border: none; border-top: 1px dashed #666;">
+<p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
+Firma Digital Verificada vía OTP SMS<br>
+¡Gracias por su compra!
+</p>
+</div>"""
+
     st.markdown(ticket_html, unsafe_allow_html=True)
 
     st.write("")
 
-    # 5. Botón de Impresión JavaScript
+    # 5. Botón de Impresión JavaScript usando el módulo nativo de Streamlit
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
@@ -704,7 +703,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         🖨️ Imprimir Ticket / Guardar PDF
     </button>
     """
-    components.html(js_btn, height=65)
+    st.components.v1.html(js_btn, height=65)
 
 # =============================================================================
 # MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO
