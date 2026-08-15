@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import random
 import pandas as pd
+import plotly.express as px
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import streamlit as st
@@ -216,10 +217,10 @@ if not st.session_state.autenticado:
         if not usuario_db.empty:
           datos_usuario = usuario_db.iloc[0].to_dict()
           st.session_state.autenticado = True
-          st.session_state.rol = datos_usuario.get('rol', 'Comercio Aliado')
-          st.session_state.nombre = datos_usuario.get('nombre', 'Usuario')
+          st.session_state.rol = datos_usuario.get("rol", "Comercio Aliado")
+          st.session_state.nombre = datos_usuario.get("nombre", "Usuario")
           st.session_state.comercio_asignado = datos_usuario.get(
-              'comercio_asignado', None
+              "comercio_asignado", None
           )
           st.rerun()
         else:
@@ -815,58 +816,60 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
       col_p1.info(f"📌 **Saldo Pendiente Actual:** ${saldo_act:,.0f} COP")
       col_p2.info(f"📌 **Valor Cuota Sugerido:** ${vlr_cuota:,.0f} COP")
 
-      # Ajustamos los valores para que nunca den error cuando el saldo sea 0
-      min_permitido = 0.0 if saldo_act <= 0 else 1.0
-      val_sugerido = max(min_permitido, float(min(vlr_cuota, saldo_act)))
-
-      monto_abono = st.number_input(
-      "Monto del Abono ($ COP)",
-      min_value=min_permitido,
-      max_value=max(min_permitido, float(saldo_act)),
-      value=val_sugerido,
-      step=1000.0
-       )
-
-      if st.button("💾 Registrar Pago Oficial", use_container_width=True):
-        fecha_pago = datetime.now().strftime("%Y-%m-%d %H:%M")
-        nuevo_saldo = saldo_act - monto_abono
-        nuevo_estado = "CANCELADO" if nuevo_saldo <= 0 else "ACTIVO"
-
-        with conn.session as s:
-          s.execute(
-              text(
-                  "INSERT INTO pagos (fecha, id_credito, monto_pagado) VALUES"
-                  " (:f, :id_c, :m)"
-              ),
-              {"f": fecha_pago, "id_c": credito_sel, "m": monto_abono},
-          )
-          s.execute(
-              text(
-                  "UPDATE solicitudes SET saldo_pendiente = :ns, estado = :ne"
-                  " WHERE id = :id_c"
-              ),
-              {"ns": nuevo_saldo, "ne": nuevo_estado, "id_c": credito_sel},
-          )
-          s.execute(
-              text(
-                  "UPDATE clientes SET cupo_disponible = cupo_disponible + :m"
-                  " WHERE cedula = :ced"
-              ),
-              {"m": monto_abono, "ced": fila_credito["cedula_cliente"]},
-          )
-          s.commit()
-
-        msg_pago = (
-            f"BankCali: Recibimos tu abono de ${monto_abono:,.0f} COP al"
-            f" credito {credito_sel}. Nuevo saldo: ${nuevo_saldo:,.0f} COP. Tu"
-            " cupo ha sido liberado."
+      if saldo_act <= 0:
+        st.info(
+            "ℹ️ Este crédito se encuentra CANCELADO. No registra saldo"
+            " pendiente por abonar."
         )
-        enviar_sms_twilio(celular_cli, mensaje_custom=msg_pago)
-
-        st.success(
-            f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo"
-            f" saldo: **${nuevo_saldo:,.0f} COP**."
+      else:
+        monto_abono = st.number_input(
+            "Monto del Abono ($ COP)",
+            min_value=1.0,
+            max_value=saldo_act,
+            value=float(min(vlr_cuota, saldo_act)),
+            step=1000.0,
         )
+
+        if st.button("💾 Registrar Pago Oficial", use_container_width=True):
+          fecha_pago = datetime.now().strftime("%Y-%m-%d %H:%M")
+          nuevo_saldo = saldo_act - monto_abono
+          nuevo_estado = "CANCELADO" if nuevo_saldo <= 0 else "ACTIVO"
+
+          with conn.session as s:
+            s.execute(
+                text(
+                    "INSERT INTO pagos (fecha, id_credito, monto_pagado)"
+                    " VALUES (:f, :id_c, :m)"
+                ),
+                {"f": fecha_pago, "id_c": credito_sel, "m": monto_abono},
+            )
+            s.execute(
+                text(
+                    "UPDATE solicitudes SET saldo_pendiente = :ns, estado = :ne"
+                    " WHERE id = :id_c"
+                ),
+                {"ns": nuevo_saldo, "ne": nuevo_estado, "id_c": credito_sel},
+            )
+            s.execute(
+                text(
+                    "UPDATE clientes SET cupo_disponible = cupo_disponible + :m"
+                    " WHERE cedula = :ced"
+                ),
+                {"m": monto_abono, "ced": fila_credito["cedula_cliente"]},
+            )
+            s.commit()
+
+          msg_pago = (
+              f"BankCali: Recibimos tu abono de ${monto_abono:,.0f} COP al"
+              f" credito {credito_sel}. Nuevo saldo: ${nuevo_saldo:,.0f} COP."
+              " Tu cupo ha sido liberado."
+          )
+          enviar_sms_twilio(celular_cli, mensaje_custom=msg_pago)
+
+          st.success(
+              f"✅ Pago por ${monto_abono:,.0f} COP registrado con éxito. Nuevo"
+              f" saldo: **${nuevo_saldo:,.0f} COP**."
+          )
 
 # =============================================================================
 # MÓDULO 4: CONTROL DE CARTERA VENCIDA Y MORA (COBRANZAS)
@@ -897,9 +900,7 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
   else:
     df_cartera["Fecha_DT"] = pd.to_datetime(df_cartera["fecha"])
     hoy = datetime.now()
-    df_cartera["Dias_Transcurridos"] = (
-        hoy - df_cartera["Fecha_DT"]
-    ).dt.days
+    df_cartera["Dias_Transcurridos"] = (hoy - df_cartera["Fecha_DT"]).dt.days
 
     def clasificar_mora(dias):
       if dias <= 15:
@@ -1040,195 +1041,129 @@ elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
 # MÓDULO 7: PANEL GENERAL DE ADMINISTRACIÓN (SOLO ADMIN)
 # =============================================================================
 elif opcion == "7. Panel General de Administración" and es_admin:
-    st.header("📈 Dashboard de Métricas y Rendimiento Financiero")
-    st.markdown("Visión estratégica del negocio en Puerto Rico (Caquetá).")
+  st.header("📈 Dashboard de Métricas y Rendimiento Financiero")
+  st.markdown("Visión estratégica del negocio en Puerto Rico (Caquetá).")
+  st.markdown("---")
+
+  try:
+    df_solicitudes = conn.query(
+        "SELECT id, fecha, comercio, cedula_cliente, monto_compra, cuotas,"
+        " valor_cuota, total_pagar, saldo_pendiente, estado FROM solicitudes",
+        ttl=0,
+    )
+    df_clientes_tot = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
+
+    total_colocado = (
+        df_solicitudes["monto_compra"].sum() if not df_solicitudes.empty else 0
+    )
+    total_saldo = (
+        df_solicitudes["saldo_pendiente"].sum()
+        if not df_solicitudes.empty
+        else 0
+    )
+    total_cupos = (
+        df_clientes_tot["cupo_aprobado"].sum()
+        if not df_clientes_tot.empty
+        else 0
+    )
+
+    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
+    kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
+    kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
+
     st.markdown("---")
+    st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
 
-    try:
-        # Cargar todos los datos de solicitudes para métricas y gráficas
-        df_solicitudes = conn.query(
-            "SELECT id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado FROM solicitudes",
-            ttl=0
-        )
-        df_clientes_tot = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
+    if not df_solicitudes.empty:
+      col_graf1, col_graf2 = st.columns(2)
 
-        # Calculo de KPIs principales
-        total_colocado = df_solicitudes["monto_compra"].sum() if not df_solicitudes.empty else 0
-        total_saldo = df_solicitudes["saldo_pendiente"].sum() if not df_solicitudes.empty else 0
-        total_cupos = df_clientes_tot["cupo_aprobado"].sum() if not df_clientes_tot.empty else 0
-
-        kpi1, kpi2, kpi3 = st.columns(3)
-        kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
-        kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
-        kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
-
-        st.markdown("---")
-        st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
-
-        if not df_solicitudes.empty:
-            import plotly.express as px
-
-            col_graf1, col_graf2 = st.columns(2)
-
-            # -------------------------------------------------------------
-            # 1. GRÁFICA DE RIESGO / ESTADO DE CARTERA
-            # -------------------------------------------------------------
-            with col_graf1:
-                st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
-                df_estado = df_solicitudes.groupby("estado").size().reset_index(name="cantidad")
-                fig_estado = px.pie(
-                    df_estado, 
-                    values="cantidad", 
-                    names="estado", 
-                    hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Set2
-                )
-                fig_estado.update_traces(textposition='inside', textinfo='percent+label')
-                fig_estado.update_layout(margin=dict(t=20, b=20, l=10, r=10), showlegend=True)
-                st.plotly_chart(fig_estado, use_container_width=True)
-
-            # -------------------------------------------------------------
-            # 2. GRÁFICA DE VENTAS POR COMERCIO
-            # -------------------------------------------------------------
-            with col_graf2:
-                st.markdown("##### 🏪 Capital Colocado por Comercio Aliado")
-                df_comercio = df_solicitudes.groupby("comercio")["monto_compra"].sum().reset_index()
-                fig_comercio = px.bar(
-                    df_comercio,
-                    x="monto_compra",
-                    y="comercio",
-                    orientation="h",
-                    text_auto='.2s',
-                    labels={"monto_compra": "Monto ($ COP)", "comercio": "Comercio"},
-                    color="monto_compra",
-                    color_continuous_scale="Blues"
-                )
-                fig_comercio.update_layout(
-                    xaxis_title="Monto Colocado ($ COP)", 
-                    yaxis_title="", 
-                    margin=dict(t=20, b=20, l=10, r=10),
-                    coloraxis_showscale=False
-                )
-                st.plotly_chart(fig_comercio, use_container_width=True)
-
-            # -------------------------------------------------------------
-            # 3. BALANCE GENERAL: RECUPERADO VS PENDIENTE
-            # -------------------------------------------------------------
-            st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
-            
-            capital_total = float(df_solicitudes['monto_compra'].sum())
-            saldo_pendiente = float(df_solicitudes['saldo_pendiente'].sum())
-            capital_recuperado = max(0.0, capital_total - saldo_pendiente)
-            
-            df_balance = pd.DataFrame({
-                'Concepto': ['Capital Recuperado / Cobrado', 'Saldo Pendiente por Cobrar'],
-                'Monto ($ COP)': [capital_recuperado, saldo_pendiente]
-            })
-
-            fig_balance = px.bar(
-                df_balance,
-                x='Concepto',
-                y='Monto ($ COP)',
-                color='Concepto',
-                text_auto=',.0f',
-                color_discrete_map={
-                    'Capital Recuperado / Cobrado': '#2ecc71',
-                    'Saldo Pendiente por Cobrar': '#e74c3c'
-                }
-            )
-            fig_balance.update_layout(showlegend=False, margin=dict(t=20, b=20, l=10, r=10))
-            st.plotly_chart(fig_balance, use_container_width=True)
-
-        else:
-            st.info("No hay créditos registrados aún para generar gráficos.")
-
-    except Exception as e:
-        st.error(f"Error calculando indicadores o generando gráficas: {e}")
-
-    # -------------------------------------------------------------
-    # 1. GRÁFICA DE PÉRDIDAS Y ESTADO DE CARTERA (Donut Chart)
-    # -------------------------------------------------------------
-    with col_graf1:
+      with col_graf1:
         st.markdown("##### 🛡️ Estado de Créditos (Riesgo / Morosidad)")
-        
-        # Agrupamos por estado (Ej: ACTIVO, CANCELADO, EN MORA)
-        df_estado = df_creditos.groupby("estado").size().reset_index(name="cantidad")
-        
-        fig_estado = px.pie(
-            df_estado, 
-            values="cantidad", 
-            names="estado", 
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Set2
+        df_estado = (
+            df_solicitudes.groupby("estado").size().reset_index(name="cantidad")
         )
-        fig_estado.update_traces(textposition='inside', textinfo='percent+label')
-        fig_estado.update_layout(margin=dict(t=20, b=20, l=10, r=10), showlegend=False)
+        fig_estado = px.pie(
+            df_estado,
+            values="cantidad",
+            names="estado",
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Set2,
+        )
+        fig_estado.update_traces(
+            textposition="inside", textinfo="percent+label"
+        )
+        fig_estado.update_layout(
+            margin=dict(t=20, b=20, l=10, r=10), showlegend=True
+        )
         st.plotly_chart(fig_estado, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # 2. GRÁFICA DE VENTAS POR COMERCIO (Bar Chart)
-    # -------------------------------------------------------------
-    with col_graf2:
-        st.markdown("##### 🏪 Capital Colocado por Comercio Afiliado")
-        
-        df_comercio = df_creditos.groupby("comercio")["monto"].sum().reset_index()
-        
+      with col_graf2:
+        st.markdown("##### 🏪 Capital Colocado por Comercio Aliado")
+        df_comercio = (
+            df_solicitudes.groupby("comercio")["monto_compra"]
+            .sum()
+            .reset_index()
+        )
         fig_comercio = px.bar(
             df_comercio,
-            x="monto",
+            x="monto_compra",
             y="comercio",
             orientation="h",
-            text_auto='.2s',
-            color="monto",
-            color_continuous_scale="Blues"
+            text_auto=".2s",
+            labels={"monto_compra": "Monto ($ COP)", "comercio": "Comercio"},
+            color="monto_compra",
+            color_continuous_scale="Blues",
         )
         fig_comercio.update_layout(
-            xaxis_title="Monto ($ COP)", 
-            yaxis_title="", 
+            xaxis_title="Monto Colocado ($ COP)",
+            yaxis_title="",
             margin=dict(t=20, b=20, l=10, r=10),
-            coloraxis_showscale=False
+            coloraxis_showscale=False,
         )
         st.plotly_chart(fig_comercio, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # 3. BALANCE GENERAL: SALDO PENDIENTE VS CAPITAL RECUPERADO
-    # -------------------------------------------------------------
-    st.markdown("##### 💰 Distribución de Cartera Actual")
-    
-    saldo_recuperado = df_creditos['monto'].sum() - df_creditos['saldo_pendiente'].sum()
-    saldo_pendiente = df_creditos['saldo_pendiente'].sum()
-    
-    df_balance = pd.DataFrame({
-        'Concepto': ['Capital Recuperado / Cobrado', 'Saldo Pendiente por Cobrar'],
-        'Monto': [max(0, saldo_recuperado), saldo_pendiente]
-    })
+      st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
 
-    fig_balance = px.bar(
-        df_balance,
-        x='Concepto',
-        y='Monto',
-        color='Concepto',
-        text_auto=',.0f',
-        color_discrete_map={
-            'Capital Recuperado / Cobrado': '#2ecc71',
-            'Saldo Pendiente por Cobrar': '#e74c3c'
-        }
-    )
-    fig_balance.update_layout(showlegend=False, margin=dict(t=20, b=20, l=10, r=10))
-    st.plotly_chart(fig_balance, use_container_width=True)
+      capital_total = float(df_solicitudes["monto_compra"].sum())
+      saldo_pendiente = float(df_solicitudes["saldo_pendiente"].sum())
+      capital_recuperado = max(0.0, capital_total - saldo_pendiente)
+
+      df_balance = pd.DataFrame({
+          "Concepto": [
+              "Capital Recuperado / Cobrado",
+              "Saldo Pendiente por Cobrar",
+          ],
+          "Monto ($ COP)": [capital_recuperado, saldo_pendiente],
+      })
+
+      fig_balance = px.bar(
+          df_balance,
+          x="Concepto",
+          y="Monto ($ COP)",
+          color="Concepto",
+          text_auto=",.0f",
+          color_discrete_map={
+              "Capital Recuperado / Cobrado": "#2ecc71",
+              "Saldo Pendiente por Cobrar": "#e74c3c",
+          },
+      )
+      fig_balance.update_layout(
+          showlegend=False, margin=dict(t=20, b=20, l=10, r=10)
+      )
+      st.plotly_chart(fig_balance, use_container_width=True)
 
     else:
-    st.info("No hay suficientes datos de créditos registrados para generar las gráficas.")  
+      st.info("No hay créditos registrados aún para generar gráficos.")
 
-    except Exception as e:
-    st.error(f"Error calculando indicadores: {e}")
+  except Exception as e:
+    st.error(f"Error calculando indicadores o generando gráficas: {e}")
 
 # =============================================================================
 # MÓDULO 8: GESTIÓN DE USUARIOS Y PARÁMETROS (EXCLUSIVO ADMINISTRADOR)
 # =============================================================================
 elif opcion == "8. Gestión de Usuarios":
 
-  # VERIFICACIÓN ESTRICTA DE PERMISOS
   if not es_admin:
     st.error(
         "⛔ **Acceso Restringido:** Este módulo contiene parámetros del sistema"
@@ -1247,9 +1182,6 @@ elif opcion == "8. Gestión de Usuarios":
         "🗑️ Eliminar Usuario",
     ])
 
-    # -------------------------------------------------------------------------
-    # TAB 1: LISTAR USUARIOS
-    # -------------------------------------------------------------------------
     with tab_listar:
       st.subheader("Lista de Cuentas Autorizadas")
 
@@ -1280,13 +1212,9 @@ elif opcion == "8. Gestión de Usuarios":
       except Exception as e:
         st.error(f"⚠️ Error al consultar usuarios: {e}")
 
-    # -------------------------------------------------------------------------
-    # TAB 2: AGREGAR NUEVO USUARIO
-    # -------------------------------------------------------------------------
     with tab_agregar:
       st.subheader("Crear Cuenta de Usuario")
 
-      # Cargar lista actualizada de comercios para asignación
       try:
         df_com_opt = conn.query("SELECT nombre FROM comercios", ttl=0)
         lista_comercios = (
@@ -1346,9 +1274,6 @@ elif opcion == "8. Gestión de Usuarios":
             except Exception as e:
               st.error(f"Error al guardar usuario: {e}")
 
-    # -------------------------------------------------------------------------
-    # TAB 3: PARÁMETROS GENERALES DEL SISTEMA
-    # -------------------------------------------------------------------------
     with tab_param:
       st.subheader("⚙️ Configuración Global de Políticas y Parámetros")
       st.caption("Ajusta los parámetros operativos de BankCali.")
@@ -1376,9 +1301,6 @@ elif opcion == "8. Gestión de Usuarios":
       if st.button("💾 Guardar Parámetros del Sistema"):
         st.success("✅ Parámetros del sistema actualizados correctamente.")
 
-    # -------------------------------------------------------------------------
-    # TAB 4: ELIMINAR USUARIO
-    # -------------------------------------------------------------------------
     with tab_eliminar:
       st.subheader("🗑️ Eliminar Usuario")
       doc_elim = st.text_input(
