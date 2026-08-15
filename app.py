@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import random
-import requests
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from twilio.rest import Client
 
 # Configuración de página
 st.set_page_config(
@@ -45,26 +45,31 @@ st.markdown("""
 # --- PIN DE ADMINISTRADOR ---
 PIN_ADMIN = "123456789"
 
-# --- FUNCIÓN PARA ENVIAR SMS GRATIS (TEXTBELT) ---
-def enviar_sms_gratis_textbelt(celular_cliente, codigo_otp):
+# --- FUNCIÓN PARA ENVIAR SMS CON TWILIO ---
+def enviar_sms_twilio(celular_cliente, codigo_otp):
     celular_limpio = ''.join(filter(str.isdigit, celular_cliente))
     if not celular_limpio.startswith("57"):
         celular_limpio = "57" + celular_limpio
-        
-    mensaje = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
+    
+    numero_destino = f"+{celular_limpio}"
+    mensaje_body = f"Su codigo OTP para el credito en Puerto Rico es: {codigo_otp}"
     
     try:
-        response = requests.post('https://textbelt.com/text', {
-            'phone': f'+{celular_limpio}',
-            'message': mensaje,
-            'key': 'textbelt',
-        }, timeout=8)
+        # Obtener credenciales desde Streamlit Secrets
+        account_sid = st.secrets["twilio"]["ACCOUNT_SID"]
+        auth_token = st.secrets["twilio"]["AUTH_TOKEN"]
+        twilio_number = st.secrets["twilio"]["PHONE_NUMBER"]
         
-        resultado = response.json()
-        return resultado.get('success', False)
+        client = Client(account_sid, auth_token)
+        message = client.messages.create(
+            body=mensaje_body,
+            from_=twilio_number,
+            to=numero_destino
+        )
+        return True, message.sid
     except Exception as e:
-        print(f"Error enviando SMS: {e}")
-        return False
+        print(f"Error enviando SMS con Twilio: {e}")
+        return False, str(e)
 
 # --- NUEVO MOTOR DE EVALUACIÓN CREDITICIA (INGRESOS Y GASTOS) ---
 def evaluar_riesgo_y_cupo(ingresos, gastos):
@@ -278,12 +283,12 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                 otp = random.randint(1000, 9999)
                 st.session_state["otp_actual"] = otp
                 
-                exito_sms = enviar_sms_gratis_textbelt(celular, otp)
+                exito_sms, resultado = enviar_sms_twilio(celular, otp)
                 
                 if exito_sms:
-                    st.success(f"📱 ¡SMS enviado con éxito al celular {celular}!")
+                    st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
                 else:
-                    st.warning(f"⚠️ Alerta de respaldo (Simulación): Código OTP generado es **{otp}**")
+                    st.warning(f"⚠️ Alerta (Modo de prueba/respaldo): No se envió el SMS. Código OTP generado es **{otp}**")
             else:
                 st.error("Por favor completa los datos del cliente.")
 
@@ -314,7 +319,6 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación y Registro de Nuevo Cliente")
     st.markdown("Sistema automatizado de scoring crediticio basado en ingresos y capacidad de gastos.")
     
-    # Mostrar el mensaje de política de crédito ÚNICAMENTE si es Administrador
     if es_admin:
         st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos $\le$ 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos son obligatorios.")
     
