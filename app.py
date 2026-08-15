@@ -599,26 +599,22 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
 
-    import streamlit.components.v1 as components
+    # --- REEMPLAZA DESDE AQUÍ RESPETANDO LOS ESPACIOS A LA IZQUIERDA ---
 
-      # 1. Estilos CSS para que al imprimir SOLO salga el ticket (oculta sidebar, botones y headers de Streamlit)
-      st.markdown("""
-      <style>
-      @media print {
-      /* Ocultar interfaz de Streamlit */
-      [data-testid="stSidebar"], 
-      header, 
-      footer, 
-      .stButton, 
-      iframe {
+# 1. Estilos CSS para impresión
+st.markdown("""
+<style>
+@media print {
+    [data-testid="stSidebar"], 
+    header, 
+    footer, 
+    .stButton, 
+    iframe {
         display: none !important;
     }
-    
-      /* Formato para papel térmico POS */
-      body {
+    body {
         background: white !important;
     }
-    
     .ticket-pos-box {
         width: 100% !important;
         max-width: 320px !important;
@@ -629,13 +625,13 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         color: black !important;
         padding: 10px !important;
     }
-      }
-     </style>
-     """, unsafe_allow_html=True)
+}
+</style>
+""", unsafe_allow_html=True)
 
-    # 2. Renderizado del Ticket HTML
-    st.markdown(f"""
-    <div class="ticket-pos-box" style="
+# 2. Renderizado del Ticket HTML
+st.markdown(f"""
+<div class="ticket-pos-box" style="
     border: 2px dashed #d3ad69; 
     border-radius: 10px; 
     padding: 20px; 
@@ -678,7 +674,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
 st.write("")
 
-# 3. Botón interactivo HTML/JS que ejecuta el print de la ventana principal
+# 3. Botón de Impresión en Javascript
 components.html("""
     <script>
     function ejecutarImpresion() {
