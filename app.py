@@ -41,6 +41,46 @@ if "autenticado" not in st.session_state:
   st.session_state["rol"] = ""
   st.session_state["comercio"] = ""
 
+# =============================================================================
+# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS Y USUARIOS
+# =============================================================================
+conn = st.connection("supabase", type="sql")
+
+try:
+  with conn.session as s:
+    # 1. Asegurar la existencia de la tabla usuarios
+    s.execute(
+        text("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                documento TEXT PRIMARY KEY,
+                pin TEXT NOT NULL,
+                nombre TEXT NOT NULL,
+                rol TEXT NOT NULL,
+                comercio_asignado TEXT
+            );
+        """)
+    )
+
+    # 2. Asegurar la columna de logo en comercios
+    s.execute(
+        text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
+    )
+
+    s.commit()
+
+    # 3. Verificar si no existen usuarios y crear el administrador por defecto
+    res_user = s.execute(text("SELECT COUNT(*) FROM usuarios")).fetchone()
+    if res_user and res_user[0] == 0:
+      s.execute(
+          text("""
+                INSERT INTO usuarios (documento, pin, nombre, rol, comercio_asignado)
+                VALUES ('123456789', '1234', 'Administrador Inicial', 'Administrador', 'N/A - Administrador');
+            """)
+      )
+      s.commit()
+except Exception as e:
+  print(f"Error en la migración/inicialización de base de datos: {e}")
+
 # -----------------------------------------------------------------------------
 # PANTALLA DE AUTENTICACIÓN / LOGIN
 # -----------------------------------------------------------------------------
