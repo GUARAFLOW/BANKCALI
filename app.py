@@ -117,6 +117,7 @@ if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.rol = None
     st.session_state.nombre = None
+    st.session_state.comercio_asignado = None
 
 # --- 2. PANEL DE LOGIN (BARRA LATERAL) ---
 st.sidebar.markdown("""
@@ -134,17 +135,19 @@ if not st.session_state.autenticado:
     if st.sidebar.button("Iniciar Sesión", use_container_width=True):
         if doc_login and pin_login:
             try:
-                usuario_db = conn.query("SELECT nombre, rol FROM usuarios WHERE documento = :doc AND pin = :pin", params={"doc": doc_login, "pin": pin_login}, ttl=0)
+                usuario_db = conn.query("SELECT * FROM usuarios WHERE documento = :doc AND pin = :pin", params={"doc": doc_login, "pin": pin_login}, ttl=0)
                 
                 if not usuario_db.empty:
+                    datos_usuario = usuario_db.iloc[0].to_dict()
                     st.session_state.autenticado = True
-                    st.session_state.rol = usuario_db.iloc[0]['rol']
-                    st.session_state.nombre = usuario_db.iloc[0]['nombre']
+                    st.session_state.rol = datos_usuario.get('rol', 'Comercio Aliado')
+                    st.session_state.nombre = datos_usuario.get('nombre', 'Usuario')
+                    st.session_state.comercio_asignado = datos_usuario.get('comercio_asignado', None)
                     st.rerun()
                 else:
                     st.sidebar.error("❌ Documento o PIN incorrectos.")
             except Exception as e:
-                st.sidebar.error("Error al conectar con la base de datos.")
+                st.sidebar.error(f"Error al conectar con la base de datos: {e}")
         else:
             st.sidebar.warning("⚠️ Completa ambos campos.")
             
@@ -165,7 +168,7 @@ if not st.session_state.autenticado:
         try:
             st.image("LOGOBANKCALI.jpeg", use_container_width=True)
         except Exception:
-            st.error("No se pudo cargar la imagen grande en el área principal.")
+            st.error("No se pudo cargar el logo de BankCali. Verifica que el archivo LOGOBANKCALI.jpeg esté en la carpeta.")
             
     st.stop()
 
@@ -176,6 +179,7 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.autenticado = False
     st.session_state.rol = None
     st.session_state.nombre = None
+    st.session_state.comercio_asignado = None
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -227,7 +231,13 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         col1, col2 = st.columns(2, gap="large")
         with col1:
             st.markdown("##### 👤 Datos del Cliente")
-            comercio_sel = st.selectbox("Seleccione el Comercio Aliado", df_comercios['nombre'].tolist())
+            
+            # --- SEGURIDAD: CONTROL DE COMERCIO ---
+            if st.session_state.rol == "Comercio Aliado" and st.session_state.comercio_asignado and st.session_state.comercio_asignado != "N/A - Administrador":
+                st.info(f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**")
+                comercio_sel = st.session_state.comercio_asignado
+            else:
+                comercio_sel = st.selectbox("Seleccione el Comercio Aliado", df_comercios['nombre'].tolist())
             
             match_comision = df_comercios[df_comercios['nombre'] == comercio_sel]['comision']
             comercio_comercio = float(match_comision.values[0]) if not match_comision.empty else 5.0
@@ -309,7 +319,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                         s.commit()
                     
                     st.balloons()
-                    st.success(f"🎉 ¡Crédito Aprobado e Inscripto con Éxito! Número de Crédito: **{id_credito}**")
+                    st.success(f"🎉 ¡Crédito Aprobado e Inscrito con Éxito! Número de Crédito: **{id_credito}**")
                     del st.session_state["otp_actual"]
                 else:
                     st.error("❌ Código OTP incorrecto. Verifique e intente nuevamente.")
@@ -320,7 +330,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.markdown("Sistema automatizado de scoring crediticio basado en ingresos y capacidad de gastos.")
     
     if es_admin:
-        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos $\le$ 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos son obligatorios.")
+        st.info("💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP; si superan el 35% reciben $0. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben un cupo base del 30% ajustado por gastos. Todos los campos son obligatorios.")
     
     st.markdown("---")
     
@@ -559,12 +569,16 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
     st.markdown("---")
 
     try:
-        df_usuarios = conn.query("SELECT id, documento, nombre, rol, pin FROM usuarios", ttl=0)
+        df_usuarios = conn.query("SELECT * FROM usuarios", ttl=0)
     except Exception as e:
-        st.error("Error al cargar usuarios. Asegúrate de haber creado la tabla en Supabase.")
+        st.error("Error al cargar usuarios. Asegúrate de haber ejecutado el ALTER TABLE en Supabase.")
         df_usuarios = None
 
     if df_usuarios is not None:
+        # Extraer lista de comercios para el dropdown
+        df_comercios_nombres = conn.query("SELECT nombre FROM comercios", ttl=0)
+        lista_comercios_opciones = ["N/A - Administrador"] + (df_comercios_nombres['nombre'].tolist() if not df_comercios_nombres.empty else [])
+        
         tab1, tab2, tab3 = st.tabs(["➕ Agregar Usuario", "✏️ Modificar Usuario", "🗑️ Eliminar Usuario"])
 
         with tab1:
@@ -573,6 +587,7 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
             with col1:
                 nuevo_doc = st.text_input("Documento de Identidad / NIT")
                 nuevo_nom = st.text_input("Nombre Completo o Razón Social")
+                nuevo_com_asig = st.selectbox("Asignar a Comercio (Obligatorio para Aliados)", lista_comercios_opciones)
             with col2:
                 nuevo_rol = st.selectbox("Rol del Usuario", ["Comercio Aliado", "Administrador"])
                 nuevo_pin = st.text_input("PIN de Acceso (Contraseña)", type="password")
@@ -583,14 +598,22 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
                     try:
                         with conn.session as s:
                             s.execute(text("""
-                                INSERT INTO usuarios (documento, nombre, rol, pin) 
-                                VALUES (:doc, :nom, :rol, :pin)
-                            """), {"doc": nuevo_doc, "nom": nuevo_nom, "rol": nuevo_rol, "pin": nuevo_pin})
+                                INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado) 
+                                VALUES (:doc, :nom, :rol, :pin, :comercio)
+                            """), {
+                                "doc": nuevo_doc, 
+                                "nom": nuevo_nom, 
+                                "rol": nuevo_rol, 
+                                "pin": nuevo_pin,
+                                "comercio": nuevo_com_asig if nuevo_rol == "Comercio Aliado" else "N/A - Administrador"
+                            })
                             s.commit()
                         st.success("✅ Usuario creado con éxito.")
                         st.rerun()
                     except IntegrityError:
                         st.error("❌ Ya existe un usuario registrado con ese documento.")
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
                 else:
                     st.warning("⚠️ Debes completar todos los campos obligatorios.")
 
@@ -600,12 +623,20 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
                 opciones_mod = dict(zip(df_usuarios['id'], df_usuarios['nombre'] + " (" + df_usuarios['rol'] + ")"))
                 id_mod = st.selectbox("Selecciona el usuario a modificar:", options=list(opciones_mod.keys()), format_func=lambda x: opciones_mod[x])
                 
-                usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0]
+                usr_actual = df_usuarios[df_usuarios['id'] == id_mod].iloc[0].to_dict()
                 
                 col3, col4 = st.columns(2, gap="large")
                 with col3:
                     mod_doc = st.text_input("Documento", value=usr_actual['documento'])
                     mod_nom = st.text_input("Nombre", value=usr_actual['nombre'])
+                    
+                    comercio_actual_bd = usr_actual.get('comercio_asignado', "N/A - Administrador")
+                    if pd.isna(comercio_actual_bd) or comercio_actual_bd not in lista_comercios_opciones:
+                        comercio_actual_bd = "N/A - Administrador"
+                    idx_com = lista_comercios_opciones.index(comercio_actual_bd)
+                    
+                    mod_comercio = st.selectbox("Modificar Comercio Asignado", lista_comercios_opciones, index=idx_com)
+
                 with col4:
                     roles = ["Comercio Aliado", "Administrador"]
                     idx_rol = roles.index(usr_actual['rol']) if usr_actual['rol'] in roles else 0
@@ -617,9 +648,16 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
                     with conn.session as s:
                         s.execute(text("""
                             UPDATE usuarios 
-                            SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin 
+                            SET documento = :doc, nombre = :nom, rol = :rol, pin = :pin, comercio_asignado = :comercio 
                             WHERE id = :id
-                        """), {"doc": mod_doc, "nom": mod_nom, "rol": mod_rol, "pin": mod_pin, "id": id_mod})
+                        """), {
+                            "doc": mod_doc, 
+                            "nom": mod_nom, 
+                            "rol": mod_rol, 
+                            "pin": mod_pin, 
+                            "comercio": mod_comercio if mod_rol == "Comercio Aliado" else "N/A - Administrador",
+                            "id": id_mod
+                        })
                         s.commit()
                     st.success("✅ Datos actualizados correctamente.")
                     st.rerun()
@@ -645,4 +683,8 @@ elif opcion == "7. Gestión de Usuarios" and es_admin:
         st.markdown("---")
         st.subheader("📋 Lista Actual de Usuarios Registrados")
         if not df_usuarios.empty:
-            st.dataframe(df_usuarios[['documento', 'nombre', 'rol']], use_container_width=True, hide_index=True)
+            # Mostrar tabla limpia sin la contraseña
+            columnas_mostrar = ['documento', 'nombre', 'rol', 'comercio_asignado']
+            # Evitar error si la columna no existe temporalmente
+            columnas_validas = [col for col in columnas_mostrar if col in df_usuarios.columns]
+            st.dataframe(df_usuarios[columnas_validas], use_container_width=True, hide_index=True)
