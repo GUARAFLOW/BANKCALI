@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+import base64
 
 # Configuración de página
 st.set_page_config(
@@ -14,7 +15,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS PARA EL BANNER Y LOGOTIPO ---
+# --- LOGOTIPO EN BASE64 (INCRUSTADO DIRECTAMENTE) ---
+# Si prefieres usar una imagen propia en texto, aquí la cargamos. 
+# Como alternativa robusta para la nube, usamos el contenedor HTML con imagen integrada:
+LOGO_BASE64 = """
+<div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
+    <div style="background: white; padding: 10px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+        <h1 style="color: #1E3A8A; margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing: 2px;">BankCali</h1>
+    </div>
+</div>
+"""
+
+# --- ESTILOS CSS PERSONALIZADOS PARA EL BANNER Y DISEÑO ---
 st.markdown("""
     <style>
         .main {
@@ -34,20 +46,6 @@ st.markdown("""
             margin-bottom: 25px;
             text-align: center;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .logo-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .logo-container img {
-            max-width: 240px;
-            height: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            background-color: white;
-            padding: 5px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -90,11 +88,12 @@ def evaluar_riesgo_y_cupo(ingresos):
 conn = st.connection("supabase", type="sql")
 
 # --- IMAGEN Y ENCABEZADO CORPORATIVO EN BARRA LATERAL ---
-st.sidebar.image(
-    "https://images.unsplash.com/photo-1556742049-0a67d553c2a3?auto=format&fit=crop&w=600&q=80", 
-    use_container_width=True,
-    caption="Red Comercial Autorizada"
-)
+st.sidebar.markdown("""
+    <div style="text-align: center; padding: 10px; background: #1E3A8A; border-radius: 8px; color: white; margin-bottom: 10px;">
+        <h3 style="color: white; margin: 0;">BankCali</h3>
+        <p style="font-size: 0.8rem; margin: 0; opacity: 0.8;">Red Comercial Autorizada</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- 1. INICIALIZAR SESIÓN ---
 if "autenticado" not in st.session_state:
@@ -167,16 +166,11 @@ opcion = st.sidebar.selectbox("Seleccione un módulo", menu_opciones, label_visi
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray; font-size: 0.8rem;'>Sistema de Crédito Rotativo v2.5<br>Puerto Rico, Caquetá</p>", unsafe_allow_html=True)
 
-# --- ENCABEZADO CORPORATIVO CON LOGOTIPO CENTRADO (USANDO NATIVO STREAMLIT) ---
-st.markdown('<div class="corporate-banner">', unsafe_allow_html=True)
-
-col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
-with col_logo2:
-    # Usamos el componente nativo de Streamlit que procesa la imagen de manera óptima
-    st.image("logobankcali.jpeg.jpeg", use_container_width=True)
-
+# --- ENCABEZADO CORPORATIVO CON LOGOTIPO INSTITUCIONAL ---
 st.markdown("""
-        <h2 style="color: white; margin-top: 5px;">Plataforma Financiera de Crédito Rotativo</h2>
+    <div class="corporate-banner">
+        """ + LOGO_BASE64 + """
+        <h2 style="color: white; margin-top: 10px;">Plataforma Financiera de Crédito Rotativo</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.9;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
 """, unsafe_allow_html=True)
