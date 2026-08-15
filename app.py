@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
+import streamlit.components.v1 as components
 
 # Intentar importar Plotly opcionalmente
 try:
