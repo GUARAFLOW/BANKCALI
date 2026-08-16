@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import io
 import random
 import textwrap
+import urllib.parse
 import pandas as pd
 import qrcode
 from sqlalchemy import text
@@ -10,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 
-# Importar Plotly opcionalmente
+# Intentar importar Plotly opcionalmente
 try:
     import plotly.express as px
 
@@ -78,6 +79,26 @@ st.markdown(
             margin: 0 auto;
             box-shadow: 0 4px 10px rgba(0,0,0,0.08);
         }
+        .btn-print {
+            display: block;
+            width: 100%;
+            max-width: 420px;
+            margin: 15px auto 0 auto;
+            background-color: #1E3A8A;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+        }
+        .btn-print:hover {
+            background-color: #0A192F;
+            color: #38BDF8;
+        }
 
         /* CONFIGURACIÓN DE IMPRESIÓN */
         @media print {
@@ -129,45 +150,45 @@ def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
         )
         return True, message.sid
     except Exception as e:
-        print(f"Error enviando SMS con Twilio: {e}")
+        mensaje_encoded = urllib.parse.quote(mensaje_body)
+        wa_url = f"https://api.whatsapp.com/send?phone={celular_limpio}&text={mensaje_encoded}"
+
+        st.warning("⚠️ **Respaldo Gratuito Activado (Fallo Twilio / Sin Saldo):**")
+        st.markdown(f"👉 [Clic aquí para enviar OTP por WhatsApp Gratis al cliente]({wa_url})", unsafe_allow_html=True)
         return False, str(e)
 
 
-def evaluar_riesgo_y_cupo(ingresos, gastos):
+def evaluar_riesgo_y_cupo(ingresos, gastos, meses_residencia=12, tiene_aval_comercio=True, moras_previas=0):
     pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
+    margen_disponible = ingresos - gastos
+
+    score_local = 100
+    if meses_residencia < 6:
+        score_local -= 35
+    if not tiene_aval_comercio:
+        score_local -= 25
+    if moras_previas > 0:
+        score_local -= (moras_previas * 30)
+
+    if margen_disponible <= 0 or score_local < 45:
+        return 0, "RECHAZADO", "❌ Crédito no aprobado por alto riesgo de arraigo o capacidad de pago insuficiente."
 
     if 100000 <= ingresos <= 1000000:
-        if pct_gastos <= 0.35:
-            cupo = 80000
-            estado = "APROBADO"
-        else:
-            cupo = 0
-            estado = "RECHAZADO"
-
+        cupo_base = 80000 if pct_gastos <= 0.40 else 50000
     elif 1000001 <= ingresos <= 2500000:
-        margen_disponible = ingresos - gastos
-        if margen_disponible < 0:
-            cupo = 0
-            estado = "RECHAZADO"
-        else:
-            cupo = round((margen_disponible * 0.25) / 10000) * 10000
-            estado = "APROBADO" if cupo > 0 else "RECHAZADO"
-
+        cupo_base = margen_disponible * 0.25
     else:
         cupo_base = ingresos * 0.30
-        if pct_gastos > 0.50:
-            reduccion = (pct_gastos - 0.50) * 0.5
-            cupo_final = cupo_base * (1 - reduccion)
-        else:
-            cupo_final = cupo_base
 
-        cupo = round(cupo_final / 10000) * 10000
-        estado = "APROBADO" if cupo > 0 else "RECHAZADO"
+    factor_ponderador = max(0.40, score_local / 100.0)
+    cupo_calculado = cupo_base * factor_ponderador
+    cupo = round(max(50000, cupo_calculado) / 10000) * 10000
 
+    estado = "APROBADO" if cupo > 0 else "RECHAZADO"
     mensaje = (
-        f"✅ Cliente Aprobado para Crédito Rotativo con cupo de ${cupo:,.0f} COP."
+        f"✅ Cupo Aprobado por Scoring Comunitario: ${cupo:,.0f} COP (Score Local: {score_local}/100)."
         if cupo > 0
-        else "❌ Crédito no aprobado por capacidad de endeudamiento."
+        else "❌ Crédito no aprobado por scoring insuficiente."
     )
     return cupo, estado, mensaje
 
@@ -378,7 +399,192 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             "⚠️ No hay comercios registrados aún. Registre uno en 'Gestión de Almacenes Aliados'."
         )
     else:
-        # Si ya se emitió un ticket en la sesión, mostramos la vista limpia con opción de reinicio
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
+            st.markdown("##### 👤 Datos del Cliente")
+
+            if (
+                st.session_state.rol == "Comercio Aliado"
+                and st.session_state.comercio_asignado
+                and st.session_state.comercio_asignado != "N/A - Administrador"
+            ):
+                st.info(
+                    f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**"
+                )
+                comercio_sel = st.session_state.comercio_asignado
+            else:
+                comercio_sel = st.selectbox(
+                    "Seleccione el Comercio Aliado", df_comercios["nombre"].tolist()
+                )
+
+            match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
+            comercio_comercio = (
+                float(match_comercio["comision"].values[0])
+                if not match_comercio.empty
+                else 5.0
+            )
+            logo_comercio = (
+                match_comercio["logo_base64"].values[0]
+                if not match_comercio.empty and "logo_base64" in match_comercio.columns
+                else None
+            )
+
+            cedula = st.text_input("Número de Cédula del Cliente")
+
+            cliente_info = None
+            if cedula:
+                cliente_info_df = conn.query(
+                    "SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced",
+                    params={"ced": cedula},
+                    ttl=0,
+                )
+                if not cliente_info_df.empty:
+                    cliente_info = cliente_info_df.iloc[0]
+
+            if cliente_info is not None:
+                nombre_cliente = st.text_input(
+                    "Nombre Completo del Cliente", value=cliente_info["nombre"]
+                )
+                celular = st.text_input(
+                    "Número de Celular", value=cliente_info["celular"]
+                )
+                st.success(
+                    f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP"
+                )
+            else:
+                nombre_cliente = st.text_input("Nombre Completo del Cliente")
+                celular = st.text_input("Número de Celular")
+                if cedula:
+                    st.warning(
+                        "⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente'."
+                    )
+
+        with col2:
+            st.markdown("##### 🛒 Detalles de la Compra")
+            monto_compra = st.number_input(
+                "Monto de la Compra ($ COP)",
+                min_value=80000,
+                max_value=5000000,
+                step=10000,
+                value=80000,
+            )
+            cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
+
+            (
+                df_amort,
+                total_pagar,
+                valor_cuota,
+                monto_aval,
+                interes_total,
+            ) = generar_tabla_amortizacion(monto_compra, cuotas)
+            desembolso = monto_compra * (1 - (comercio_comercio / 100))
+
+        st.markdown("---")
+        st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
+        res1, res2, res3 = st.columns(3)
+        res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
+        res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
+        res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
+
+        with st.expander(
+            "📅 Ver Tabla de Amortización Quincenal Completa", expanded=False
+        ):
+            st.dataframe(df_amort, use_container_width=True, hide_index=True)
+
+        excede_cupo = False
+        if cliente_info is not None and monto_compra > float(cliente_info["cupo_disponible"]):
+            st.error("❌ La compra excede el cupo disponible del cliente.")
+            excede_cupo = True
+
+        st.markdown("---")
+        if (
+            not excede_cupo
+            and cliente_info is not None
+            and st.button(
+                "📱 Generar y Enviar Código OTP de Autorización",
+                use_container_width=True,
+            )
+        ):
+            if nombre_cliente and cedula and celular:
+                otp = random.randint(1000, 9999)
+                st.session_state["otp_actual"] = otp
+
+                exito_sms, resultado = enviar_sms_twilio(celular, otp)
+                if exito_sms:
+                    st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
+                else:
+                    st.warning(
+                        f"⚠️ Alerta (Modo de prueba/respaldo): Código OTP asignado: **{otp}**"
+                    )
+            else:
+                st.error("Por favor completa todos los datos del cliente.")
+
+        if "otp_actual" in st.session_state and not excede_cupo:
+            st.markdown("#### 🔑 Verificación de Seguridad")
+            otp_ingresado = st.text_input(
+                "Ingrese el Código OTP de 4 dígitos enviado al cliente"
+            )
+
+            if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
+                if str(otp_ingresado) == str(st.session_state["otp_actual"]):
+                    id_credito = f"CR-{random.randint(10000, 99999)}"
+                    fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                    with conn.session as s:
+                        s.execute(
+                            text(
+                                "UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"
+                            ),
+                            {"monto": monto_compra, "cedula": cedula},
+                        )
+                        s.execute(
+                            text("""
+                                INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
+                                VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
+                            """),
+                            {
+                                "id": id_credito,
+                                "fecha": fecha_hoy,
+                                "comercio": comercio_sel,
+                                "cedula": cedula,
+                                "monto": monto_compra,
+                                "cuotas": cuotas,
+                                "cuota": valor_cuota,
+                                "total": total_pagar,
+                                "saldo": total_pagar,
+                                "est": "ACTIVO",
+                            },
+                        )
+                        s.commit()
+
+                    msg_confirm_compra = (
+                        f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
+                    )
+                    enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
+
+                    st.balloons()
+                    st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
+
+                    st.session_state["ultimo_ticket"] = {
+                        "id": id_credito,
+                        "fecha": fecha_hoy,
+                        "comercio": comercio_sel,
+                        "logo_comercio": logo_comercio,
+                        "cliente": nombre_cliente,
+                        "cedula": cedula,
+                        "monto": monto_compra,
+                        "cuotas": cuotas,
+                        "valor_cuota": valor_cuota,
+                        "total": total_pagar,
+                        "df_amort": df_amort,
+                    }
+                    del st.session_state["otp_actual"]
+                else:
+                    st.error("❌ Código OTP incorrecto.")
+
+        # =============================================================================
+        # RENDERIZADO DEL TICKET POS (SOLO SE MUESTRA TRAS UNA VENTA EXITOSA)
+        # =============================================================================
         if "ultimo_ticket" in st.session_state:
             t = st.session_state["ultimo_ticket"]
 
@@ -456,220 +662,28 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             """
             st.markdown(ticket_html, unsafe_allow_html=True)
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                js_btn = """
-                <script>
-                function imprimirTicket() { window.parent.print(); }
-                </script>
-                <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
-                    🖨️ Imprimir Ticket / Guardar PDF
-                </button>
-                """
-                st.components.v1.html(js_btn, height=65)
-
-            with col_btn2:
-                if st.button("🔄 Nueva Venta / Siguiente Cliente", type="primary", use_container_width=True):
-                    st.session_state.pop("ultimo_ticket", None)
-                    st.session_state.pop("otp_actual", None)
-                    st.rerun()
-
-        else:
-            col1, col2 = st.columns(2, gap="large")
-            with col1:
-                st.markdown("##### 👤 Datos del Cliente")
-
-                if (
-                    st.session_state.rol == "Comercio Aliado"
-                    and st.session_state.comercio_asignado
-                    and st.session_state.comercio_asignado != "N/A - Administrador"
-                ):
-                    st.info(
-                        f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**"
-                    )
-                    comercio_sel = st.session_state.comercio_asignado
-                else:
-                    comercio_sel = st.selectbox(
-                        "Seleccione el Comercio Aliado", df_comercios["nombre"].tolist()
-                    )
-
-                match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
-                comercio_comercio = (
-                    float(match_comercio["comision"].values[0])
-                    if not match_comercio.empty
-                    else 5.0
-                )
-                logo_comercio = (
-                    match_comercio["logo_base64"].values[0]
-                    if not match_comercio.empty and "logo_base64" in match_comercio.columns
-                    else None
-                )
-
-                cedula = st.text_input("Número de Cédula del Cliente", key="input_cedula_pos")
-
-                cliente_info = None
-                if cedula:
-                    cliente_info_df = conn.query(
-                        "SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced",
-                        params={"ced": cedula},
-                        ttl=0,
-                    )
-                    if not cliente_info_df.empty:
-                        cliente_info = cliente_info_df.iloc[0]
-
-                if cliente_info is not None:
-                    nombre_cliente = st.text_input(
-                        "Nombre Completo del Cliente", value=cliente_info["nombre"]
-                    )
-                    celular = st.text_input(
-                        "Número de Celular", value=cliente_info["celular"]
-                    )
-                    st.success(
-                        f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP"
-                    )
-                else:
-                    nombre_cliente = st.text_input("Nombre Completo del Cliente")
-                    celular = st.text_input("Número de Celular")
-                    if cedula:
-                        st.warning(
-                            "⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente'."
-                        )
-
-            with col2:
-                st.markdown("##### 🛒 Detalles de la Compra")
-                monto_compra = st.number_input(
-                    "Monto de la Compra ($ COP)",
-                    min_value=80000,
-                    max_value=5000000,
-                    step=10000,
-                    value=80000,
-                )
-                cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
-
-                (
-                    df_amort,
-                    total_pagar,
-                    valor_cuota,
-                    monto_aval,
-                    interes_total,
-                ) = generar_tabla_amortizacion(monto_compra, cuotas)
-                desembolso = monto_compra * (1 - (comercio_comercio / 100))
-
-            st.markdown("---")
-            st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
-            res1, res2, res3 = st.columns(3)
-            res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
-            res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
-            res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
-
-            with st.expander(
-                "📅 Ver Tabla de Amortización Quincenal Completa", expanded=False
-            ):
-                st.dataframe(df_amort, use_container_width=True, hide_index=True)
-
-            excede_cupo = False
-            if cliente_info is not None and monto_compra > float(cliente_info["cupo_disponible"]):
-                st.error("❌ La compra excede el cupo disponible del cliente.")
-                excede_cupo = True
-
-            st.markdown("---")
-            if (
-                not excede_cupo
-                and cliente_info is not None
-                and st.button(
-                    "📱 Generar y Enviar Código OTP de Autorización",
-                    use_container_width=True,
-                )
-            ):
-                if nombre_cliente and cedula and celular:
-                    otp = random.randint(1000, 9999)
-                    st.session_state["otp_actual"] = otp
-
-                    exito_sms, resultado = enviar_sms_twilio(celular, otp)
-                    if exito_sms:
-                        st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
-                    else:
-                        st.warning(
-                            f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. Código OTP es **{otp}**"
-                        )
-                else:
-                    st.error("Por favor completa todos los datos del cliente.")
-
-            if "otp_actual" in st.session_state and not excede_cupo:
-                st.markdown("#### 🔑 Verificación de Seguridad")
-                otp_ingresado = st.text_input(
-                    "Ingrese el Código OTP de 4 dígitos enviado al cliente"
-                )
-
-                if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
-                    if str(otp_ingresado) == str(st.session_state["otp_actual"]):
-                        id_credito = f"CR-{random.randint(10000, 99999)}"
-                        fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                        with conn.session as s:
-                            s.execute(
-                                text(
-                                    "UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"
-                                ),
-                                {"monto": monto_compra, "cedula": cedula},
-                            )
-                            s.execute(
-                                text("""
-                                    INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
-                                    VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
-                                """),
-                                {
-                                    "id": id_credito,
-                                    "fecha": fecha_hoy,
-                                    "comercio": comercio_sel,
-                                    "cedula": cedula,
-                                    "monto": monto_compra,
-                                    "cuotas": cuotas,
-                                    "cuota": valor_cuota,
-                                    "total": total_pagar,
-                                    "saldo": total_pagar,
-                                    "est": "ACTIVO",
-                                },
-                            )
-                            s.commit()
-
-                        msg_confirm_compra = (
-                            f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
-                        )
-                        enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
-
-                        st.balloons()
-                        st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
-
-                        st.session_state["ultimo_ticket"] = {
-                            "id": id_credito,
-                            "fecha": fecha_hoy,
-                            "comercio": comercio_sel,
-                            "logo_comercio": logo_comercio,
-                            "cliente": nombre_cliente,
-                            "cedula": cedula,
-                            "monto": monto_compra,
-                            "cuotas": cuotas,
-                            "valor_cuota": valor_cuota,
-                            "total": total_pagar,
-                            "df_amort": df_amort,
-                        }
-                        st.rerun()
-                    else:
-                        st.error("❌ Código OTP incorrecto.")
+            js_btn = """
+            <script>
+            function imprimirTicket() { window.parent.print(); }
+            </script>
+            <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
+                🖨️ Imprimir Ticket / Guardar PDF
+            </button>
+            """
+            st.components.v1.html(js_btn, height=65)
 
 # =============================================================================
-# MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO
+# MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO COMUNITARIO
 # =============================================================================
 elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
     st.header("📝 Evaluación, Firma de Acuerdo y Registro de Cliente")
     st.markdown(
-        "Sistema automatizado de scoring crediticio con verificación por SMS (OTP) y aceptación contractual."
+        "Sistema automatizado de scoring crediticio comunitario con verificación por SMS (OTP) / WhatsApp y aceptación contractual."
     )
 
     if es_admin:
         st.info(
-            "💡 **Política de Crédito:** Ingresos de $100k a $1M con gastos <= 35% reciben $80.000 COP. Ingresos de $1M a $2.5M dependen del margen disponible. Ingresos > $2.5M reciben cupo base del 30% ajustado por gastos."
+            "💡 **Política de Crédito Comunitario:** Evaluación ponderada basada en margen disponible, meses de residencia local y aval del comercio aliado (Scoring Score de 0 a 100 pts)."
         )
 
     st.markdown("---")
@@ -684,9 +698,12 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
             "Correo Electrónico *", placeholder="cliente@ejemplo.com"
         )
         c_direccion = st.text_input("Dirección de Residencia *")
+        c_meses_residencia = st.number_input(
+            "Meses Residiendo en el Municipio *", min_value=1, value=12, step=1
+        )
 
     with col_e2:
-        st.markdown("##### 💼 Perfil Económico")
+        st.markdown("##### 💼 Perfil Económico y Arraigo Comunitario")
         c_ocupacion = st.selectbox("Actividad Económica *", [
             "Seleccione una actividad...",
             "Empleado Público / Oficial",
@@ -713,17 +730,26 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
             step=50000,
             value=400000,
         )
+        c_aval_comercio = st.checkbox(
+            "¿Cuenta con aval/referencia directa del comercio aliado?", value=True
+        )
 
     cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(
-        c_ingresos, c_gastos
+        ingresos=c_ingresos,
+        gastos=c_gastos,
+        meses_residencia=c_meses_residencia,
+        tiene_aval_comercio=c_aval_comercio,
     )
 
     st.markdown("---")
-    st.subheader("🎯 Resultado de la Evaluación de Riesgo")
+    st.subheader("🎯 Resultado de la Evaluación de Riesgo Comunitario")
 
     col_res1, col_res2 = st.columns(2)
     col_res1.metric("Cupo Aprobado Asignado", f"${cupo_sugerido:,.0f} COP")
-    col_res2.success(f"🟢 **{nivel_riesgo}**\n\n{mensaje_eval}")
+    if nivel_riesgo == "APROBADO":
+        col_res2.success(f"🟢 **{nivel_riesgo}**\n\n{mensaje_eval}")
+    else:
+        col_res2.error(f"🔴 **{nivel_riesgo}**\n\n{mensaje_eval}")
 
     st.markdown("---")
 
@@ -753,7 +779,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
                 <p><strong>1. OBJETO:</strong> BankCali otorga al CLIENTE una línea de Crédito Rotativo con un cupo aprobado de <strong>${cupo_sugerido:,.0f} COP</strong> para ser utilizado exclusivamente en comercios aliados autorizados del municipio de Puerto Rico, Caquetá.</p>
                 <p><strong>2. USO Y AMORTIZACIÓN:</strong> El cliente podrá realizar compras diferidas en cuotas quincenales (2 a 8 cuotas). Cada cuota cancelada liberará cupo disponible.</p>
                 <p><strong>3. TASAS Y COSTOS:</strong> Tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y tarifa de Aval del 10% sobre compra.</p>
-                <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS:</strong> El CLIENTE autoriza el envío de notificaciones y la validación por código OTP enviado al número móvil <strong>{c_celular}</strong> como firma electrónica válida conforme a la Ley 527 de 1999.</p>
+                <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS/WHATSAPP:</strong> El CLIENTE autoriza el envío de notificaciones y la validación por código OTP enviado al número móvil <strong>{c_celular}</strong> como firma electrónica válida conforme a la Ley 527 de 1999.</p>
             </div>
             """),
             unsafe_allow_html=True,
@@ -764,7 +790,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         )
 
         st.markdown("---")
-        st.subheader("📲 Verificación y Notificación por SMS (Firma Digital)")
+        st.subheader("📲 Verificación y Notificación por SMS / WhatsApp (Firma Digital)")
 
         if st.button(
             "📱 Enviar Código OTP de Solicitud de Crédito al Cliente",
@@ -786,8 +812,8 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
                     f"📱 ¡Notificación y OTP de solicitud enviada vía SMS al celular {c_celular}!"
                 )
             else:
-                st.warning(
-                    f"⚠️ Alerta (Modo respaldo): SMS no enviado. Código OTP es **{otp_registro}**"
+                st.info(
+                    f"💡 Código OTP generado correctamente: **{otp_registro}**. Puede enviarlo por WhatsApp utilizando la opción de respaldo arriba."
                 )
 
         if "otp_registro_actual" in st.session_state and acepta_terminos:
@@ -1025,7 +1051,7 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
         )
         st.text_area("Vista previa del SMS de Recordatorio", msg_recordatorio, height=100)
 
-        if st.button("📩 Enviar Recordatorio por SMS"):
+        if st.button("📩 Enviar Recordatorio por SMS / WhatsApp"):
             exito_cob, _ = enviar_sms_twilio(
                 fila_mora["celular"], mensaje_custom=msg_recordatorio
             )
@@ -1033,8 +1059,6 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
                 st.success(
                     f"✅ Recordatorio enviado con éxito al número {fila_mora['celular']}."
                 )
-            else:
-                st.error("❌ No se pudo enviar el mensaje SMS.")
 
 # =============================================================================
 # MÓDULO 5: GESTIÓN GENERAL DE CLIENTES (SOLO ADMIN)
@@ -1396,7 +1420,7 @@ elif opcion == "7. Panel General de Administración" and es_admin:
             st.info("No hay créditos registrados aún para generar gráficos.")
 
     except Exception as e:
-        st.error(f"Error calculando indicadores o generando gráficos: {e}")
+        st.error(f"Error calculando indicadores o generando gráficas: {e}")
 
 # =============================================================================
 # MÓDULO 8: GESTIÓN DE USUARIOS Y PARÁMETROS (EXCLUSIVO ADMINISTRADOR)
