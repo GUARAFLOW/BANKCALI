@@ -378,7 +378,7 @@ st.markdown(
 )
 
 # =============================================================================
-# MÓDULO 1: SIMULAR / SOLICITAR CRÉDITO (POS) - ESTRUCTURA COMPLETA
+# MÓDULO 1: SIMULAR / SOLICITAR CRÉDITO (POS) - SANGRIAS CORREGIDAS
 # =============================================================================
 
 import base64
@@ -387,182 +387,138 @@ from datetime import datetime
 import qrcode
 
 if opcion_menu == "1. Simular / Solicitar Crédito (POS)":
-  st.subheader("💳 Simulación y Solicitud de Crédito POS")
+    st.subheader("💳 Simulación y Solicitud de Crédito POS")
 
-  # 1. Identificación del Comercio Activo
-  if st.session_state.get("rol") == "FUNDADOR (Administrador)":
-    try:
-      df_com = conn.query("SELECT nombre FROM comercios", ttl=0)
-      lista_com = (
-          df_com["nombre"].tolist() if not df_com.empty else ["Comercio Aliado"]
-      )
-    except Exception:
-      lista_com = ["Comercio Aliado"]
-    comercio_nom = st.selectbox(
-        "Seleccionar Comercio Aliado", lista_com, key="comercio_seleccionado"
-    )
-  else:
-    comercio_nom = st.session_state.get(
-        "usuario_nombre",
-        st.session_state.get("comercio_aliado", "Comercio Aliado"),
-    )
-    st.info(f"🏪 **Comercio Activo:** {comercio_nom}")
+    # 1. Identificación del Comercio Activo
+    if st.session_state.get("rol") == "FUNDADOR (Administrador)":
+        try:
+            df_com = conn.query("SELECT nombre FROM comercios", ttl=0)
+            lista_com = df_com["nombre"].tolist() if not df_com.empty else ["Comercio Aliado"]
+        except Exception:
+            lista_com = ["Comercio Aliado"]
+        comercio_nom = st.selectbox("Seleccionar Comercio Aliado", lista_com, key="comercio_seleccionado")
+    else:
+        comercio_nom = st.session_state.get("usuario_nombre", st.session_state.get("comercio_aliado", "Comercio Aliado"))
+        st.info(f"🏪 **Comercio Activo:** {comercio_nom}")
 
-  st.markdown("---")
+    st.markdown("---")
 
-  # 2. Formulario de Datos de la Compra
-  col1, col2 = st.columns(2)
-  with col1:
-    cedula_cliente = st.text_input(
-        "Cédula del Cliente", value="", key="cedula_cliente"
-    )
-    monto_compra = st.number_input(
-        "Monto de la Compra ($ COP)",
-        min_value=0,
-        step=5000,
-        value=80000,
-        key="monto_compra",
-    )
+    # 2. Formulario de Datos de la Compra
+    col1, col2 = st.columns(2)
+    with col1:
+        cedula_cliente = st.text_input("Cédula del Cliente", value="", key="cedula_cliente")
+        monto_compra = st.number_input("Monto de la Compra ($ COP)", min_value=0, step=5000, value=80000, key="monto_compra")
 
-  with col2:
-    num_cuotas = st.selectbox(
-        "Número de Cuotas (Quincenales)",
-        [1, 2, 3, 4, 6],
-        index=0,
-        key="num_cuotas",
-    )
+    with col2:
+        num_cuotas = st.selectbox("Número de Cuotas (Quincenales)", [1, 2, 3, 4, 6], index=0, key="num_cuotas")
 
-  # Cálculos dinámicos de las cuotas
-  tasa_interes = 0.02  # Tasa de ejemplo 2%
-  total_pagar = monto_compra * (1 + (tasa_interes * num_cuotas))
-  valor_cuota = total_pagar / num_cuotas if num_cuotas > 0 else 0
+    # Cálculos dinámicos de las cuotas
+    tasa_interes = 0.02
+    total_pagar = monto_compra * (1 + (tasa_interes * num_cuotas))
+    valor_cuota = total_pagar / num_cuotas if num_cuotas > 0 else 0
 
-  st.session_state["valor_cuota"] = valor_cuota
-  st.session_state["total_pagar"] = total_pagar
+    st.session_state["valor_cuota"] = valor_cuota
+    st.session_state["total_pagar"] = total_pagar
 
-  st.markdown(f"""
+    st.markdown(f"""
     **Resumen del Crédito:**
     * **Valor Cuota:** ${valor_cuota:,.0f} COP (Quincenal)
     * **Total a Pagar:** ${total_pagar:,.0f} COP
     """)
 
-  st.markdown("---")
-  st.subheader("🔑 Verificación de Seguridad")
-  otp_code = st.text_input(
-      "Ingrese el Código OTP de 4 dígitos enviado al cliente", type="password"
-  )
+    st.markdown("---")
+    st.subheader("🔑 Verificación de Seguridad")
+    otp_code = st.text_input("Ingrese el Código OTP de 4 dígitos enviado al cliente", type="password")
 
-  # 3. Botón de Procesamiento: Descuento de Cupo y Registro en BD
-  if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
-    if not cedula_cliente or monto_compra <= 0:
-      st.error(
-          "❌ Ingrese una cédula válida y un monto de compra mayor a cero."
-      )
-    else:
-      try:
-        df_cli = conn.query(
-            "SELECT id, nombre, cupo_disponible FROM clientes WHERE cedula ="
-            " :ced",
-            params={"ced": str(cedula_cliente)},
-            ttl=0,
-        )
-
-        if df_cli.empty:
-          st.error("❌ El cliente no se encuentra registrado en el sistema.")
+    # 3. Botón de Procesamiento: Descuento de Cupo y Registro en BD
+    if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
+        if not cedula_cliente or monto_compra <= 0:
+            st.error("❌ Ingrese una cédula válida y un monto de compra mayor a cero.")
         else:
-          cli_id = df_cli.iloc[0]["id"]
-          cli_nom = df_cli.iloc[0]["nombre"]
-          cupo_actual = float(df_cli.iloc[0]["cupo_disponible"])
+            try:
+                df_cli = conn.query(
+                    "SELECT id, nombre, cupo_disponible FROM clientes WHERE cedula = :ced",
+                    params={"ced": str(cedula_cliente)},
+                    ttl=0
+                )
 
-          if cupo_actual < monto_compra:
-            st.error(
-                f"❌ Cupo insuficiente. Cupo disponible: ${cupo_actual:,.0f} COP"
-            )
-          else:
-            # Actualización del cupo en la BD
-            nuevo_cupo = cupo_actual - monto_compra
-            conn.execute(
-                "UPDATE clientes SET cupo_disponible = :nuevo WHERE id = :id",
-                params={"nuevo": nuevo_cupo, "id": cli_id},
-            )
+                if df_cli.empty:
+                    st.error("❌ El cliente no se encuentra registrado en el sistema.")
+                else:
+                    cli_id = df_cli.iloc[0]["id"]
+                    cli_nom = df_cli.iloc[0]["nombre"]
+                    cupo_actual = float(df_cli.iloc[0]["cupo_disponible"])
 
-            # Inserción de la transacción
-            id_credito_gen = f"CR-{datetime.now().strftime('%m%d%H%M')}"
-            conn.execute(
-                """
+                    if cupo_actual < monto_compra:
+                        st.error(f"❌ Cupo insuficiente. Cupo disponible: ${cupo_actual:,.0f} COP")
+                    else:
+                        # Actualización del cupo en la BD
+                        nuevo_cupo = cupo_actual - monto_compra
+                        conn.execute(
+                            "UPDATE clientes SET cupo_disponible = :nuevo WHERE id = :id",
+                            params={"nuevo": nuevo_cupo, "id": cli_id}
+                        )
+
+                        # Inserción de la transacción
+                        id_credito_gen = f"CR-{datetime.now().strftime('%m%d%H%M')}"
+                        conn.execute(
+                            """
                             INSERT INTO creditos 
                             (id_credito, cliente_id, comercio, monto, cuotas, valor_cuota, total_pagar, estado, fecha)
                             VALUES (:id_cred, :cli_id, :comercio, :monto, :cuotas, :v_cuota, :total, 'ACTIVO', CURRENT_TIMESTAMP)
-                        """,
-                params={
-                    "id_cred": id_credito_gen,
-                    "cli_id": cli_id,
-                    "comercio": comercio_nom,
-                    "monto": monto_compra,
-                    "cuotas": num_cuotas,
-                    "v_cuota": valor_cuota,
-                    "total": total_pagar,
-                },
-            )
+                            """,
+                            params={
+                                "id_cred": id_credito_gen,
+                                "cli_id": cli_id,
+                                "comercio": comercio_nom,
+                                "monto": monto_compra,
+                                "cuotas": num_cuotas,
+                                "v_cuota": valor_cuota,
+                                "total": total_pagar
+                            }
+                        )
 
-            st.session_state["id_credito_gen"] = id_credito_gen
-            st.session_state["nombre_cliente"] = cli_nom
-            st.session_state["credito_aprobado"] = True
+                        st.session_state["id_credito_gen"] = id_credito_gen
+                        st.session_state["nombre_cliente"] = cli_nom
+                        st.session_state["credito_aprobado"] = True
 
-            st.success(
-                f"🎉 ¡Crédito {id_credito_gen} otorgado con éxito! Nuevo cupo:"
-                f" ${nuevo_cupo:,.0f} COP"
-            )
-            st.balloons()
-      except Exception as e:
-        st.error(f"⚠️ Error al procesar la transacción: {str(e)}")
+                        st.success(f"🎉 ¡Crédito {id_credito_gen} otorgado con éxito! Nuevo cupo: ${nuevo_cupo:,.0f} COP")
+                        st.balloons()
+            except Exception as e:
+                st.error(f"⚠️ Error al procesar la transacción: {str(e)}")
 
-  st.markdown("---")
+    st.markdown("---")
 
-  # 4. Renderizado del Ticket POS con Logo y QR
-  id_cred_str = (
-      st.session_state.get("id_credito_gen")
-      or locals().get("id_credito_gen")
-      or "CR-00000"
-  )
-  cliente_nom = (
-      st.session_state.get("nombre_cliente")
-      or locals().get("cli_nom")
-      or "Cliente"
-  )
-  fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 4. Renderizado del Ticket POS con Logo y QR
+    id_cred_str = st.session_state.get("id_credito_gen") or locals().get("id_credito_gen") or "CR-00000"
+    cliente_nom = st.session_state.get("nombre_cliente") or locals().get("cli_nom") or "Cliente"
+    fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-  # Búsqueda de Logo
-  logo_html = ""
-  try:
-    df_logo = conn.query(
-        "SELECT logo_base64 FROM comercios WHERE LOWER(TRIM(nombre)) ="
-        " LOWER(TRIM(:nom))",
-        params={"nom": str(comercio_nom)},
-        ttl=0,
-    )
-    if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
-      str_b64 = str(df_logo.iloc[0]["logo_base64"]).strip()
-      src_img = (
-          str_b64
-          if str_b64.startswith("data:image")
-          else f"data:image/png;base64,{str_b64}"
-      )
-      logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
-  except Exception:
-    pass
+    # Búsqueda de Logo
+    logo_html = ""
+    try:
+        df_logo = conn.query(
+            "SELECT logo_base64 FROM comercios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nom))",
+            params={"nom": str(comercio_nom)},
+            ttl=0
+        )
+        if not df_logo.empty and pd.notnull(df_logo.iloc[0]["logo_base64"]):
+            str_b64 = str(df_logo.iloc[0]["logo_base64"]).strip()
+            src_img = str_b64 if str_b64.startswith("data:image") else f"data:image/png;base64,{str_b64}"
+            logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
+    except Exception:
+        pass
 
-  # Generación de QR
-  qr_data = f"BANKCALI|CREDITO:{id_cred_str}|CEDULA:{cedula_cliente}|TOTAL:{total_pagar:,.0f}"
-  qr_img = qrcode.make(qr_data)
-  buffer = io.BytesIO()
-  qr_img.save(buffer, format="PNG")
-  qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
-  qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
+    # Generación de QR
+    qr_data = f"BANKCALI|CREDITO:{id_cred_str}|CEDULA:{cedula_cliente}|TOTAL:{total_pagar:,.0f}"
+    qr_img = qrcode.make(qr_data)
+    buffer = io.BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
+    qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
 
-  # Estilos CSS
-  st.markdown(
-      """
+    # Estilos CSS
+    st.markdown("""
     <style>
     @page { size: auto; margin: 0mm; }
     @media print {
@@ -577,12 +533,10 @@ if opcion_menu == "1. Simular / Solicitar Crédito (POS)":
         }
     }
     </style>
-    """,
-      unsafe_allow_html=True,
-  )
+    """, unsafe_allow_html=True)
 
-  # Ticket HTML
-  ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
+    # Ticket HTML
+    ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
     <div style="text-align: center;">
     {logo_html}
     <h3 style="margin: 0; color: #0d233a;">{comercio_nom}</h3>
@@ -614,197 +568,9 @@ if opcion_menu == "1. Simular / Solicitar Crédito (POS)":
     </div>
     </div>"""
 
-  st.markdown(ticket_html, unsafe_allow_html=True)
-  st.write("")
-
-  js_btn = """
-    <script>
-    function imprimirTicket() { window.parent.print(); }
-    </script>
-    <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
-        🖨️ Imprimir Ticket / Guardar PDF
-    </button>
-    """
-  st.components.v1.html(js_btn, height=65)
-
-    # =============================================================================
-    # GENERACIÓN DE TICKET POS CON LOGO Y CÓDIGO QR DINÁMICO
-    # =============================================================================
-
-    # 1. Rastrear automáticamente el nombre del comercio activo
-    comercio_nom = None
-    for var in [
-        "comercio_aliado",
-        "comercio_seleccionado",
-        "comercio",
-        "tienda",
-        "comercio_actual",
-    ]:
-      if var in locals() and locals()[var]:
-        val = str(locals()[var]).strip()
-        if val and val not in ["Comercio Aliado", "None", ""]:
-          comercio_nom = val
-          break
-
-    if not comercio_nom:
-      for key, val in st.session_state.items():
-        if (
-            any(
-                k in str(key).lower()
-                for k in ["comercio", "tienda", "aliado", "store"]
-            )
-            and val
-        ):
-          if isinstance(val, str) and val.strip() not in [
-              "Comercio Aliado",
-              "None",
-              "",
-          ]:
-            comercio_nom = val.strip()
-            break
-
-    if not comercio_nom:
-      comercio_nom = "Comercio Aliado"
-
-    # 2. Búsqueda del Logo en BD
-    logo_html = ""
-    try:
-      df_logo = conn.query(
-          "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nom))",
-          params={"nom": str(comercio_nom)},
-          ttl=0,
-      )
-      if df_logo.empty:
-        df_logo = conn.query(
-            "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(nombre) LIKE LOWER(:nom)",
-            params={"nom": f"%{comercio_nom}%"},
-            ttl=0,
-        )
-
-      if not df_logo.empty:
-        comercio_nom = df_logo.iloc[0]["nombre"]
-        raw_b64 = df_logo.iloc[0]["logo_base64"]
-        if pd.notnull(raw_b64) and str(raw_b64).strip() not in [
-            "",
-            "None",
-            "nan",
-        ]:
-          str_b64 = str(raw_b64).strip()
-          src_img = (
-              str_b64
-              if str_b64.startswith("data:image")
-              else f"data:image/png;base64,{str_b64}"
-          )
-          logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
-    except Exception:
-      pass
-
-    # 3. Datos del Crédito
-    id_cred_str = (
-        st.session_state.get("id_credito_gen")
-        or locals().get("id_credito_gen")
-        or locals().get("num_credito")
-        or "CR-00000"
-    )
-    cliente_nom = (
-        st.session_state.get("nombre_cliente")
-        or locals().get("nombre_cliente")
-        or "Cliente"
-    )
-    cliente_ced = (
-        st.session_state.get("cedula_cliente")
-        or locals().get("cedula_cliente")
-        or "N/A"
-    )
-    monto_val = (
-        st.session_state.get("monto_compra")
-        or locals().get("monto_compra")
-        or 0
-    )
-    cuotas_val = (
-        st.session_state.get("num_cuotas") or locals().get("num_cuotas") or 1
-    )
-    cuota_val = (
-        st.session_state.get("valor_cuota") or locals().get("valor_cuota") or 0
-    )
-    total_val = (
-        st.session_state.get("total_pagar") or locals().get("total_pagar") or 0
-    )
-    fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    # 4. Generación del Código QR en Base64
-    qr_data = f"BANKCALI|CREDITO:{id_cred_str}|CEDULA:{cliente_ced}|TOTAL:{total_val:,.0f}"
-    qr_img = qrcode.make(qr_data)
-    buffer = io.BytesIO()
-    qr_img.save(buffer, format="PNG")
-    qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
-    qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
-
-    # 5. Estilos CSS de Impresión
-    st.markdown(
-        """
-<style>
-@page { size: auto; margin: 0mm; }
-@media print {
-    html, body { height: 100% !important; overflow: hidden !important; background: #ffffff !important; }
-    body * { visibility: hidden !important; }
-    .ticket-pos-box, .ticket-pos-box * { visibility: visible !important; }
-    .ticket-pos-box {
-        position: fixed !important;
-        left: 50% !important;
-        top: 20px !important;
-        transform: translateX(-50%) !important;
-        width: 320px !important;
-        margin: 0 !important;
-        padding: 15px !important;
-        border: 1px dashed #000 !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-        box-shadow: none !important;
-    }
-}
-</style>
-""",
-        unsafe_allow_html=True,
-    )
-
-    # 6. HTML del Ticket POS con el QR incluido
-    ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
-<div style="text-align: center;">
-{logo_html}
-<h3 style="margin: 0; color: #0d233a;">{comercio_nom}</h3>
-<p style="margin: 4px 0; font-size: 12px;">
-Financiado por <b>BANKCALI</b><br>
-Puerto Rico, Caquetá<br>
-<b>COMPROBANTE DE COMPRA A CRÉDITO</b>
-</p>
-</div>
-<hr style="border: none; border-top: 1px dashed #666;">
-<p style="font-size: 13px; line-height: 1.6; margin: 0;">
-<b>N° Crédito:</b> {id_cred_str}<br>
-<b>Fecha:</b> {fecha_str}<br>
-<b>Cliente:</b> {cliente_nom}<br>
-<b>Cédula:</b> {cliente_ced}
-</p>
-<hr style="border: none; border-top: 1px dashed #666;">
-<p style="font-size: 13px; line-height: 1.6; margin: 0;">
-<b>Monto Compra:</b> ${monto_val:,.0f} COP<br>
-<b>N° Cuotas:</b> {cuotas_val} Quincenales<br>
-<b>Valor Cuota:</b> ${cuota_val:,.0f} COP<br>
-<b>Total a Pagar:</b> ${total_val:,.0f} COP
-</p>
-<hr style="border: none; border-top: 1px dashed #666;">
-<div style="text-align: center;">
-{qr_html}
-<p style="font-size: 10px; margin-top: 4px; color: #555;">Escanear para verificar comprobante</p>
-<p style="font-size: 11px; margin-top: 6px; color: #444;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
-</div>
-</div>"""
-
     st.markdown(ticket_html, unsafe_allow_html=True)
     st.write("")
 
-    # 7. Botón ejecutor de impresión
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
