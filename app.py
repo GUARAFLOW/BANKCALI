@@ -11,6 +11,14 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 
+# Intentar importar Plotly opcionalmente
+try:
+    import plotly.express as px
+
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
 # =============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
 # =============================================================================
@@ -19,73 +27,6 @@ st.set_page_config(
     page_icon="💳",
     layout="wide",
     initial_sidebar_state="expanded",
-    )
-
-# =============================================================================
-# BANNER PRINCIPAL ANIMADO (CSS KEYFRAMES)
-# =============================================================================
-st.markdown(
-    """
-    <style>
-        /* Animación de flotación y brillo para el logo */
-        @keyframes floatAndGlow {
-            0% {
-                transform: translateY(0px) scale(1);
-                filter: drop-shadow(0 6px 15px rgba(56, 189, 248, 0.25));
-            }
-            50% {
-                transform: translateY(-8px) scale(1.02);
-                filter: drop-shadow(0 15px 25px rgba(56, 189, 248, 0.55));
-            }
-            100% {
-                transform: translateY(0px) scale(1);
-                filter: drop-shadow(0 6px 15px rgba(56, 189, 248, 0.25));
-            }
-        }
-
-        /* Contenedor del banner animado */
-        .animated-banner {
-            background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%);
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            border-radius: 16px;
-            padding: 30px 20px;
-            text-align: center;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-            margin-bottom: 25px;
-        }
-
-        .logo-img-animated {
-            max-width: 220px;
-            height: auto;
-            animation: floatAndGlow 4.5s ease-in-out infinite;
-            border-radius: 8px;
-        }
-
-        .banner-title {
-            color: #FFFFFF !important;
-            font-size: 2.2rem;
-            font-weight: 800;
-            margin-top: 15px;
-            margin-bottom: 5px;
-            letter-spacing: 0.5px;
-            text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
-        }
-
-        .banner-subtitle {
-            color: #94A3B8 !important;
-            font-size: 1.05rem;
-            margin: 0;
-            font-weight: 500;
-        }
-    </style>
-
-    <div class="animated-banner">
-        <img src="https://i.ibb.co/L5195G1/LOGOBANKCALI.png" class="logo-img-animated" alt="BankCali Logo">
-        <h1 class="banner-title">BankCali</h1>
-        <p class="banner-subtitle">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
-    </div>
-""",
-    unsafe_allow_html=True,
 )
 
 # =============================================================================
@@ -181,6 +122,7 @@ st.markdown(
 """),
     unsafe_allow_html=True,
 )
+
 
 # =============================================================================
 # FUNCIONES AUXILIARES
@@ -289,6 +231,7 @@ def reiniciar_formulario_pos():
     if "ultimo_ticket" in st.session_state:
         del st.session_state["ultimo_ticket"]
     st.session_state.compra_completada = False
+
 
 # =============================================================================
 # CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
@@ -647,7 +590,6 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                     }
                     st.session_state.compra_completada = True
                     del st.session_state["otp_actual"]
-                    st.rerun()
                 else:
                     st.error("❌ Código OTP incorrecto.")
 
@@ -806,16 +748,12 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         c_aval_comercio = st.checkbox(
             "¿Cuenta con aval/referencia directa del comercio aliado?", value=True
         )
-        c_moras = st.number_input(
-            "Moras previas registradas", min_value=0, max_value=10, value=0, step=1
-        )
 
     cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(
         ingresos=c_ingresos,
         gastos=c_gastos,
         meses_residencia=c_meses_residencia,
         tiene_aval_comercio=c_aval_comercio,
-        moras_previas=c_moras,
     )
 
     st.markdown("---")
