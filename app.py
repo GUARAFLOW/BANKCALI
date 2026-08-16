@@ -44,6 +44,19 @@ st.markdown(
         h1, h2, h3 {
             color: #1E3A8A;
         }
+        div.corporate-banner {
+            padding: 25px 20px;
+            background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%) !important;
+            color: white !important;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            text-align: center;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            border: 1px solid #38BDF8;
+        }
+        div.corporate-banner h2, div.corporate-banner p {
+            color: white !important;
+        }
         .terms-box {
             background-color: #ffffff;
             border: 1px solid #cbd5e1;
@@ -295,6 +308,23 @@ if not st.session_state.autenticado:
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        """
+        <div style="text-align: center; padding: 20px;">
+            <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
+            <p style="color: #555; font-size: 1.2rem; margin-bottom: 30px;">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+        </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    col_centro1, col_centro2, col_centro3 = st.columns([1, 3, 1])
+    with col_centro2:
+        try:
+            st.image("LOGOBANKCALI.jpeg", use_container_width=True)
+        except Exception:
+            st.error("No se pudo cargar el logo principal de BankCali.")
+
     st.stop()
 
 # =============================================================================
@@ -346,123 +376,14 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# =============================================================================
-# BANNER ANIMADO VECTORIAL FULL HD (BANKCALI)
-# =============================================================================
+# BANNER CORPORATIVO
 st.markdown(
-    """
-    <style>
-        .hero-banner {
-            background: linear-gradient(135deg, #0a192f 0%, #112240 60%, #1e3a8a 100%);
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            border-radius: 18px;
-            padding: 30px 15px 25px 15px;
-            text-align: center;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-            margin-bottom: 25px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .logo-svg-container {
-            max-width: 320px;
-            margin: 0 auto;
-            animation: float3D 4.5s ease-in-out infinite;
-        }
-
-        @keyframes float3D {
-            0% { transform: translateY(0px) rotateX(0deg); filter: drop-shadow(0 8px 15px rgba(0,0,0,0.5)); }
-            50% { transform: translateY(-8px) rotateX(3deg); filter: drop-shadow(0 18px 25px rgba(56, 189, 248, 0.4)); }
-            100% { transform: translateY(0px) rotateX(0deg); filter: drop-shadow(0 8px 15px rgba(0,0,0,0.5)); }
-        }
-
-        @keyframes shineSweep {
-            0% { x: -100%; }
-            50%, 100% { x: 200%; }
-        }
-
-        .shine-effect {
-            animation: shineSweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-
-        @keyframes greenPulse {
-            0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 2px #10b981); }
-            50% { opacity: 1; filter: drop-shadow(0 0 10px #34d399); }
-        }
-
-        .green-arrow-glow {
-            animation: greenPulse 2.5s infinite ease-in-out;
-        }
-
-        .subtitle-text {
-            color: #94A3B8 !important;
-            font-size: 1rem;
-            font-weight: 500;
-            margin-top: 10px;
-            letter-spacing: 0.5px;
-        }
-    </style>
-
-    <div class="hero-banner">
-        <div class="logo-svg-container">
-            <svg viewBox="0 0 380 170" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <filter id="shadow3d" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="3" dy="5" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
-                    </filter>
-                    
-                    <linearGradient id="blue3D" x1="0%" y1="100%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#1D4ED8"/>
-                        <stop offset="50%" stop-color="#3B82F6"/>
-                        <stop offset="100%" stop-color="#93C5FD"/>
-                    </linearGradient>
-
-                    <linearGradient id="red3D" x1="0%" y1="100%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#991B1B"/>
-                        <stop offset="50%" stop-color="#EF4444"/>
-                        <stop offset="100%" stop-color="#FCA5A5"/>
-                    </linearGradient>
-
-                    <linearGradient id="green3D" x1="0%" y1="100%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#047857"/>
-                        <stop offset="60%" stop-color="#10B981"/>
-                        <stop offset="100%" stop-color="#6EE7B7"/>
-                    </linearGradient>
-
-                    <linearGradient id="silverText" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stop-color="#FFFFFF"/>
-                        <stop offset="45%" stop-color="#E2E8F0"/>
-                        <stop offset="55%" stop-color="#CBD5E1"/>
-                        <stop offset="100%" stop-color="#64748B"/>
-                    </linearGradient>
-
-                    <linearGradient id="shineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="rgba(255,255,255,0)"/>
-                        <stop offset="50%" stop-color="rgba(255,255,255,0.6)"/>
-                        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-                    </linearGradient>
-                </defs>
-
-                <g filter="url(#shadow3d)">
-                    <path d="M 152 68 L 168 28 C 170 23 176 21 180 24 L 188 30 C 191 32 191 37 188 41 L 166 75 C 163 79 156 79 153 75 Z" fill="url(#blue3D)"/>
-                    <path d="M 175 62 L 192 18 C 194 13 200 11 204 14 L 213 21 C 216 23 216 28 213 32 L 190 70 C 187 74 180 74 177 70 Z" fill="url(#red3D)"/>
-                    <g class="green-arrow-glow">
-                        <path d="M 163 74 C 160 88 178 100 200 98 C 215 96 225 86 226 71 L 216 71 L 229 48 L 243 71 L 233 71 C 232 93 216 107 195 107 C 172 107 152 92 155 74 Z" fill="url(#green3D)"/>
-                    </g>
-                </g>
-
-                <g filter="url(#shadow3d)">
-                    <text x="190" y="148" text-anchor="middle" font-family="'Inter', 'Segoe UI', Arial, sans-serif" font-weight="900" font-size="44" fill="url(#silverText)" letter-spacing="-0.5">
-                        BankCali
-                    </text>
-                </g>
-
-                <rect class="shine-effect" x="0" y="0" width="80" height="170" fill="url(#shineGrad)" transform="skewX(-20)"/>
-            </svg>
-        </div>
-        <p class="subtitle-text">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+    textwrap.dedent("""
+    <div class="corporate-banner">
+        <h2 style="margin: 0; font-weight: 700; letter-spacing: 0.5px;">BankCali - Plataforma Financiera de Crédito Rotativo</h2>
+        <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.95;">Puerto Rico (Caquetá) • Impulsando el comercio local</p>
     </div>
-""",
+"""),
     unsafe_allow_html=True,
 )
 
