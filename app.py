@@ -78,26 +78,6 @@ st.markdown(
             margin: 0 auto;
             box-shadow: 0 4px 10px rgba(0,0,0,0.08);
         }
-        .btn-print {
-            display: block;
-            width: 100%;
-            max-width: 420px;
-            margin: 15px auto 0 auto;
-            background-color: #1E3A8A;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-        }
-        .btn-print:hover {
-            background-color: #0A192F;
-            color: #38BDF8;
-        }
 
         /* CONFIGURACIÓN DE IMPRESIÓN */
         @media print {
@@ -398,192 +378,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             "⚠️ No hay comercios registrados aún. Registre uno en 'Gestión de Almacenes Aliados'."
         )
     else:
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            st.markdown("##### 👤 Datos del Cliente")
-
-            if (
-                st.session_state.rol == "Comercio Aliado"
-                and st.session_state.comercio_asignado
-                and st.session_state.comercio_asignado != "N/A - Administrador"
-            ):
-                st.info(
-                    f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**"
-                )
-                comercio_sel = st.session_state.comercio_asignado
-            else:
-                comercio_sel = st.selectbox(
-                    "Seleccione el Comercio Aliado", df_comercios["nombre"].tolist()
-                )
-
-            match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
-            comercio_comercio = (
-                float(match_comercio["comision"].values[0])
-                if not match_comercio.empty
-                else 5.0
-            )
-            logo_comercio = (
-                match_comercio["logo_base64"].values[0]
-                if not match_comercio.empty and "logo_base64" in match_comercio.columns
-                else None
-            )
-
-            cedula = st.text_input("Número de Cédula del Cliente")
-
-            cliente_info = None
-            if cedula:
-                cliente_info_df = conn.query(
-                    "SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced",
-                    params={"ced": cedula},
-                    ttl=0,
-                )
-                if not cliente_info_df.empty:
-                    cliente_info = cliente_info_df.iloc[0]
-
-            if cliente_info is not None:
-                nombre_cliente = st.text_input(
-                    "Nombre Completo del Cliente", value=cliente_info["nombre"]
-                )
-                celular = st.text_input(
-                    "Número de Celular", value=cliente_info["celular"]
-                )
-                st.success(
-                    f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP"
-                )
-            else:
-                nombre_cliente = st.text_input("Nombre Completo del Cliente")
-                celular = st.text_input("Número de Celular")
-                if cedula:
-                    st.warning(
-                        "⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente'."
-                    )
-
-        with col2:
-            st.markdown("##### 🛒 Detalles de la Compra")
-            monto_compra = st.number_input(
-                "Monto de la Compra ($ COP)",
-                min_value=80000,
-                max_value=5000000,
-                step=10000,
-                value=80000,
-            )
-            cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
-
-            (
-                df_amort,
-                total_pagar,
-                valor_cuota,
-                monto_aval,
-                interes_total,
-            ) = generar_tabla_amortizacion(monto_compra, cuotas)
-            desembolso = monto_compra * (1 - (comercio_comercio / 100))
-
-        st.markdown("---")
-        st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
-        res1, res2, res3 = st.columns(3)
-        res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
-        res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
-        res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
-
-        with st.expander(
-            "📅 Ver Tabla de Amortización Quincenal Completa", expanded=False
-        ):
-            st.dataframe(df_amort, use_container_width=True, hide_index=True)
-
-        excede_cupo = False
-        if cliente_info is not None and monto_compra > float(cliente_info["cupo_disponible"]):
-            st.error("❌ La compra excede el cupo disponible del cliente.")
-            excede_cupo = True
-
-        st.markdown("---")
-        if (
-            not excede_cupo
-            and cliente_info is not None
-            and st.button(
-                "📱 Generar y Enviar Código OTP de Autorización",
-                use_container_width=True,
-            )
-        ):
-            if nombre_cliente and cedula and celular:
-                otp = random.randint(1000, 9999)
-                st.session_state["otp_actual"] = otp
-
-                exito_sms, resultado = enviar_sms_twilio(celular, otp)
-                if exito_sms:
-                    st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
-                else:
-                    st.warning(
-                        f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. Código OTP es **{otp}**"
-                    )
-            else:
-                st.error("Por favor completa todos los datos del cliente.")
-
-        if "otp_actual" in st.session_state and not excede_cupo:
-            st.markdown("#### 🔑 Verificación de Seguridad")
-            otp_ingresado = st.text_input(
-                "Ingrese el Código OTP de 4 dígitos enviado al cliente"
-            )
-
-            if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
-                if str(otp_ingresado) == str(st.session_state["otp_actual"]):
-                    id_credito = f"CR-{random.randint(10000, 99999)}"
-                    fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                    with conn.session as s:
-                        s.execute(
-                            text(
-                                "UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"
-                            ),
-                            {"monto": monto_compra, "cedula": cedula},
-                        )
-                        s.execute(
-                            text("""
-                                INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
-                                VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
-                            """),
-                            {
-                                "id": id_credito,
-                                "fecha": fecha_hoy,
-                                "comercio": comercio_sel,
-                                "cedula": cedula,
-                                "monto": monto_compra,
-                                "cuotas": cuotas,
-                                "cuota": valor_cuota,
-                                "total": total_pagar,
-                                "saldo": total_pagar,
-                                "est": "ACTIVO",
-                            },
-                        )
-                        s.commit()
-
-                    msg_confirm_compra = (
-                        f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
-                    )
-                    enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
-
-                    st.balloons()
-                    st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
-
-                    st.session_state["ultimo_ticket"] = {
-                        "id": id_credito,
-                        "fecha": fecha_hoy,
-                        "comercio": comercio_sel,
-                        "logo_comercio": logo_comercio,
-                        "cliente": nombre_cliente,
-                        "cedula": cedula,
-                        "monto": monto_compra,
-                        "cuotas": cuotas,
-                        "valor_cuota": valor_cuota,
-                        "total": total_pagar,
-                        "df_amort": df_amort,
-                    }
-                    del st.session_state["otp_actual"]
-                else:
-                    st.error("❌ Código OTP incorrecto.")
-
-        # =============================================================================
-        # RENDERIZADO DEL TICKET POS (SOLO SE MUESTRA TRAS UNA VENTA EXITOSA)
-        # =============================================================================
+        # Si ya se emitió un ticket en la sesión, mostramos la vista limpia con opción de reinicio
         if "ultimo_ticket" in st.session_state:
             t = st.session_state["ultimo_ticket"]
 
@@ -661,15 +456,207 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             """
             st.markdown(ticket_html, unsafe_allow_html=True)
 
-            js_btn = """
-            <script>
-            function imprimirTicket() { window.parent.print(); }
-            </script>
-            <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
-                🖨️ Imprimir Ticket / Guardar PDF
-            </button>
-            """
-            st.components.v1.html(js_btn, height=65)
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                js_btn = """
+                <script>
+                function imprimirTicket() { window.parent.print(); }
+                </script>
+                <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
+                    🖨️ Imprimir Ticket / Guardar PDF
+                </button>
+                """
+                st.components.v1.html(js_btn, height=65)
+
+            with col_btn2:
+                if st.button("🔄 Nueva Venta / Siguiente Cliente", type="primary", use_container_width=True):
+                    st.session_state.pop("ultimo_ticket", None)
+                    st.session_state.pop("otp_actual", None)
+                    st.rerun()
+
+        else:
+            col1, col2 = st.columns(2, gap="large")
+            with col1:
+                st.markdown("##### 👤 Datos del Cliente")
+
+                if (
+                    st.session_state.rol == "Comercio Aliado"
+                    and st.session_state.comercio_asignado
+                    and st.session_state.comercio_asignado != "N/A - Administrador"
+                ):
+                    st.info(
+                        f"🏢 Operando bajo la tienda: **{st.session_state.comercio_asignado}**"
+                    )
+                    comercio_sel = st.session_state.comercio_asignado
+                else:
+                    comercio_sel = st.selectbox(
+                        "Seleccione el Comercio Aliado", df_comercios["nombre"].tolist()
+                    )
+
+                match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
+                comercio_comercio = (
+                    float(match_comercio["comision"].values[0])
+                    if not match_comercio.empty
+                    else 5.0
+                )
+                logo_comercio = (
+                    match_comercio["logo_base64"].values[0]
+                    if not match_comercio.empty and "logo_base64" in match_comercio.columns
+                    else None
+                )
+
+                cedula = st.text_input("Número de Cédula del Cliente", key="input_cedula_pos")
+
+                cliente_info = None
+                if cedula:
+                    cliente_info_df = conn.query(
+                        "SELECT nombre, celular, cupo_disponible FROM clientes WHERE cedula = :ced",
+                        params={"ced": cedula},
+                        ttl=0,
+                    )
+                    if not cliente_info_df.empty:
+                        cliente_info = cliente_info_df.iloc[0]
+
+                if cliente_info is not None:
+                    nombre_cliente = st.text_input(
+                        "Nombre Completo del Cliente", value=cliente_info["nombre"]
+                    )
+                    celular = st.text_input(
+                        "Número de Celular", value=cliente_info["celular"]
+                    )
+                    st.success(
+                        f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP"
+                    )
+                else:
+                    nombre_cliente = st.text_input("Nombre Completo del Cliente")
+                    celular = st.text_input("Número de Celular")
+                    if cedula:
+                        st.warning(
+                            "⚠️ Cliente no registrado. Seleccione la opción '2. Registrar Nuevo Cliente'."
+                        )
+
+            with col2:
+                st.markdown("##### 🛒 Detalles de la Compra")
+                monto_compra = st.number_input(
+                    "Monto de la Compra ($ COP)",
+                    min_value=80000,
+                    max_value=5000000,
+                    step=10000,
+                    value=80000,
+                )
+                cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
+
+                (
+                    df_amort,
+                    total_pagar,
+                    valor_cuota,
+                    monto_aval,
+                    interes_total,
+                ) = generar_tabla_amortizacion(monto_compra, cuotas)
+                desembolso = monto_compra * (1 - (comercio_comercio / 100))
+
+            st.markdown("---")
+            st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
+            res1, res2, res3 = st.columns(3)
+            res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
+            res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
+            res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
+
+            with st.expander(
+                "📅 Ver Tabla de Amortización Quincenal Completa", expanded=False
+            ):
+                st.dataframe(df_amort, use_container_width=True, hide_index=True)
+
+            excede_cupo = False
+            if cliente_info is not None and monto_compra > float(cliente_info["cupo_disponible"]):
+                st.error("❌ La compra excede el cupo disponible del cliente.")
+                excede_cupo = True
+
+            st.markdown("---")
+            if (
+                not excede_cupo
+                and cliente_info is not None
+                and st.button(
+                    "📱 Generar y Enviar Código OTP de Autorización",
+                    use_container_width=True,
+                )
+            ):
+                if nombre_cliente and cedula and celular:
+                    otp = random.randint(1000, 9999)
+                    st.session_state["otp_actual"] = otp
+
+                    exito_sms, resultado = enviar_sms_twilio(celular, otp)
+                    if exito_sms:
+                        st.success(f"📱 ¡SMS enviado con éxito vía Twilio al celular {celular}!")
+                    else:
+                        st.warning(
+                            f"⚠️ Alerta (Modo de prueba/respaldo): SMS no enviado. Código OTP es **{otp}**"
+                        )
+                else:
+                    st.error("Por favor completa todos los datos del cliente.")
+
+            if "otp_actual" in st.session_state and not excede_cupo:
+                st.markdown("#### 🔑 Verificación de Seguridad")
+                otp_ingresado = st.text_input(
+                    "Ingrese el Código OTP de 4 dígitos enviado al cliente"
+                )
+
+                if st.button("✅ Confirmar Venta y Otorgar Crédito", use_container_width=True):
+                    if str(otp_ingresado) == str(st.session_state["otp_actual"]):
+                        id_credito = f"CR-{random.randint(10000, 99999)}"
+                        fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                        with conn.session as s:
+                            s.execute(
+                                text(
+                                    "UPDATE clientes SET cupo_disponible = cupo_disponible - :monto WHERE cedula = :cedula"
+                                ),
+                                {"monto": monto_compra, "cedula": cedula},
+                            )
+                            s.execute(
+                                text("""
+                                    INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
+                                    VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
+                                """),
+                                {
+                                    "id": id_credito,
+                                    "fecha": fecha_hoy,
+                                    "comercio": comercio_sel,
+                                    "cedula": cedula,
+                                    "monto": monto_compra,
+                                    "cuotas": cuotas,
+                                    "cuota": valor_cuota,
+                                    "total": total_pagar,
+                                    "saldo": total_pagar,
+                                    "est": "ACTIVO",
+                                },
+                            )
+                            s.commit()
+
+                        msg_confirm_compra = (
+                            f"BankCali: Su compra por ${monto_compra:,.0f} COP en {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota: ${valor_cuota:,.0f} COP."
+                        )
+                        enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
+
+                        st.balloons()
+                        st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
+
+                        st.session_state["ultimo_ticket"] = {
+                            "id": id_credito,
+                            "fecha": fecha_hoy,
+                            "comercio": comercio_sel,
+                            "logo_comercio": logo_comercio,
+                            "cliente": nombre_cliente,
+                            "cedula": cedula,
+                            "monto": monto_compra,
+                            "cuotas": cuotas,
+                            "valor_cuota": valor_cuota,
+                            "total": total_pagar,
+                            "df_amort": df_amort,
+                        }
+                        st.rerun()
+                    else:
+                        st.error("❌ Código OTP incorrecto.")
 
 # =============================================================================
 # MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO
@@ -1409,7 +1396,7 @@ elif opcion == "7. Panel General de Administración" and es_admin:
             st.info("No hay créditos registrados aún para generar gráficos.")
 
     except Exception as e:
-        st.error(f"Error calculando indicadores o generando gráficas: {e}")
+        st.error(f"Error calculando indicadores o generando gráficos: {e}")
 
 # =============================================================================
 # MÓDULO 8: GESTIÓN DE USUARIOS Y PARÁMETROS (EXCLUSIVO ADMINISTRADOR)
