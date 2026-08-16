@@ -385,19 +385,14 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
   st.markdown(
       "Simulación, cronograma de amortización y generación de ticket de venta"
       " imprimible."
-  )
-  # Renderizado del Ticket POS (Solo se muestra si hay una venta reciente en session_state)
-    if "ultimo_ticket" in st.session_state:
-        t = st.session_state["ultimo_ticket"]
-
-        # Generar QR dinámico
-        qr_data = f"BANKCALI|CREDITO:{t['id']}|CEDULA:{t['cedula']}|TOTAL:{t['total']:,.0f}"
-        qr_img = qrcode.make(qr_data)
-        buffer = io.BytesIO()
-        qr_img.save(buffer, format="PNG")
-        qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
-        qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
-
+  # Muestra el ticket únicamente si existe una venta registrada en sesión
+if "ultimo_ticket" in st.session_state:
+    t = st.session_state["ultimo_ticket"]
+    
+    # Datos para el código QR
+    id_cred_str = t.get("id", "CR-00000")
+    monto_val = t.get("monto", 0)
+    cuotas_val = t.get("cuotas", 1)
         # Preparar Logo
         logo_html = ""
         if t.get("logo_comercio"):
