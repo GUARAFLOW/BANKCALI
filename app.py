@@ -599,7 +599,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
          
-       import base64
+    import base64
     import io
     import qrcode
 
