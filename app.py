@@ -308,62 +308,24 @@ if not st.session_state.autenticado:
         unsafe_allow_html=True,
     )
 
-    # =========================================================================
-    # LOGO ANIMADO SVG (PANTALLA DE BIENVENIDA / PRE-LOGIN)
-    # =========================================================================
-    import streamlit as st
+    st.markdown(
+        """
+        <div style="text-align: center; padding: 20px;">
+            <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
+            <p style="color: #555; font-size: 1.2rem; margin-bottom: 30px;">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+        </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
-codigo_custom = """
-<style>
-    /* Animación 2: Resplandor en la flecha verde */
-    @keyframes pulseGreen {
-        0%, 100% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.2)); }
-        50% { filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.95)); }
-    }
+    col_centro1, col_centro2, col_centro3 = st.columns([1, 3, 1])
+    with col_centro2:
+        try:
+            st.image("LOGOBANKCALI.jpeg", use_container_width=True)
+        except Exception:
+            st.error("No se pudo cargar el logo principal de BankCali.")
 
-    /* Animación 3: Destello de luz diagonal */
-    @keyframes shineSweep {
-        0% { transform: translateX(-200px) skewX(-20deg); }
-        30%, 100% { transform: translateX(500px) skewX(-20deg); }
-    }
-
-    .logo-float {
-        animation: float3D 3.8s infinite ease-in-out;
-        transform-origin: center;
-    }
-
-    .green-arrow-glow {
-        animation: pulseGreen 2.2s infinite ease-in-out;
-    }
-
-    .shine-effect {
-        animation: shineSweep 4.5s infinite ease-in-out;
-    }
-</style>
-
-<!-- Definiciones SVG -->
-<svg width="0" height="0" style="position: absolute;">
-    <defs>
-        <!-- Filtro Sombra 3D -->
-        <filter id="shadow3d" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="2" dy="5" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
-        </filter>
-
-        <!-- Gradientes de Color -->
-        <linearGradient id="blue3D" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#1D4ED8"/>
-            <stop offset="50%" stop-color="#3B82F6"/>
-            <stop offset="100%" stop-color="#93C5FD"/>
-        </linearGradient>
-    </defs>
-</svg>
-"""
-
-# Opción A (Recomendada para Streamlit 1.32+)
-st.html(codigo_custom)
-
-# Opción B (Si usas versiones anteriores de Streamlit)
-# st.markdown(codigo_custom, unsafe_allow_html=True)
+    st.stop()
 
 # =============================================================================
 # CONTROL DE NAVEGACIÓN Y PERMISOS
