@@ -599,21 +599,22 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         else:
           st.error("❌ Código OTP incorrecto.")
          
-        # =============================================================================
-    # GENERACIÓN DE TICKET POS (DETECCIÓN UNIVERSAL DE VARIABLES Y LOGO)
+       import base64
+    import io
+    import qrcode
+
+    # =============================================================================
+    # GENERACIÓN DE TICKET POS CON LOGO Y CÓDIGO QR DINÁMICO
     # =============================================================================
 
-    # 1. Rastrear automáticamente el nombre del comercio activo en pantalla
+    # 1. Rastrear automáticamente el nombre del comercio activo
     comercio_nom = None
-
-    # Revisa variables locales creadas en el formulario del POS
     for var in [
         "comercio_aliado",
         "comercio_seleccionado",
         "comercio",
         "tienda",
         "comercio_actual",
-        "aliado",
     ]:
       if var in locals() and locals()[var]:
         val = str(locals()[var]).strip()
@@ -621,7 +622,6 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           comercio_nom = val
           break
 
-    # Si no lo detecta localmente, busca en la memoria de sesión
     if not comercio_nom:
       for key, val in st.session_state.items():
         if (
@@ -642,7 +642,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     if not comercio_nom:
       comercio_nom = "Comercio Aliado"
 
-    # 2. Búsqueda exacta del logo en la base de datos por el nombre detectado
+    # 2. Búsqueda del Logo en BD
     logo_html = ""
     try:
       df_logo = conn.query(
@@ -650,7 +650,6 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
           params={"nom": str(comercio_nom)},
           ttl=0,
       )
-
       if df_logo.empty:
         df_logo = conn.query(
             "SELECT nombre, logo_base64 FROM comercios WHERE LOWER(nombre) LIKE LOWER(:nom)",
@@ -661,18 +660,18 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       if not df_logo.empty:
         comercio_nom = df_logo.iloc[0]["nombre"]
         raw_b64 = df_logo.iloc[0]["logo_base64"]
-
         if pd.notnull(raw_b64) and str(raw_b64).strip() not in [
             "",
             "None",
             "nan",
         ]:
           str_b64 = str(raw_b64).strip()
-          if not str_b64.startswith("data:image"):
-            src_img = f"data:image/png;base64,{str_b64}"
-          else:
-            src_img = str_b64
-          logo_html = f'<img src="{src_img}" style="max-height: 60px; max-width: 200px; margin-bottom: 8px;" /><br>'
+          src_img = (
+              str_b64
+              if str_b64.startswith("data:image")
+              else f"data:image/png;base64,{str_b64}"
+          )
+          logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
     except Exception:
       pass
 
@@ -709,7 +708,15 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     )
     fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 4. Estilos CSS de Impresión
+    # 4. Generación del Código QR en Base64
+    qr_data = f"BANKCALI|CREDITO:{id_cred_str}|CEDULA:{cliente_ced}|TOTAL:{total_val:,.0f}"
+    qr_img = qrcode.make(qr_data)
+    buffer = io.BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
+    qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
+
+    # 5. Estilos CSS de Impresión
     st.markdown(
         """
 <style>
@@ -737,7 +744,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         unsafe_allow_html=True,
     )
 
-    # 5. Comprobante HTML
+    # 6. HTML del Ticket POS con el QR incluido
     ticket_html = f"""<div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 0 auto; font-family: monospace; color: #111;">
 <div style="text-align: center;">
 {logo_html}
@@ -763,16 +770,17 @@ Puerto Rico, Caquetá<br>
 <b>Total a Pagar:</b> ${total_val:,.0f} COP
 </p>
 <hr style="border: none; border-top: 1px dashed #666;">
-<p style="text-align: center; font-size: 11px; margin-top: 10px; color: #444;">
-Firma Digital Verificada vía OTP SMS<br>
-¡Gracias por su compra!
-</p>
+<div style="text-align: center;">
+{qr_html}
+<p style="font-size: 10px; margin-top: 4px; color: #555;">Escanear para verificar comprobante</p>
+<p style="font-size: 11px; margin-top: 6px; color: #444;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
+</div>
 </div>"""
 
     st.markdown(ticket_html, unsafe_allow_html=True)
     st.write("")
 
-    # 6. Botón ejecutor de impresión
+    # 7. Botón ejecutor de impresión
     js_btn = """
     <script>
     function imprimirTicket() { window.parent.print(); }
