@@ -28,6 +28,45 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+import streamlit as st
+
+# ==========================================
+# 1. PARTE SUPERIOR (Arriba de la interfaz)
+# ==========================================
+if "compra_completada" not in st.session_state:
+    st.session_state.compra_completada = False
+
+def reiniciar_formulario():
+    st.session_state.compra_completada = False
+    st.session_state.cliente_input = ""   # Debe coincidir con la 'key' de tu input
+    st.session_state.monto_input = 0.0    # Debe coincidir con la 'key' de tu input
+
+
+# ==========================================
+# 2. INTERFAZ Y FORMULARIO
+# ==========================================
+st.subheader("Registrar Compra")
+
+with st.form("form_compra"):
+    st.text_input("Cliente", key="cliente_input")
+    st.number_input("Monto", min_value=0.0, key="monto_input")
+    
+    btn_procesar = st.form_submit_button("Procesar Compra")
+    
+    if btn_procesar:
+        # --- Tu lógica actual para guardar en base de datos va aquí ---
+        # guardar_en_db(...)
+        
+        # Al terminar de guardar, cambias el estado:
+        st.session_state.compra_completada = True
+
+
+# ==========================================
+# 3. FUERA DEL FORMULARIO (Al final de la pantalla)
+# ==========================================
+if st.session_state.compra_completada:
+    st.success("¡Compra registrada!")
+    st.button("Nueva compra", on_click=reiniciar_formulario)
 
 # =============================================================================
 # ESTILOS CSS PERSONALIZADOS, FORMATO TICKET POS Y ESTILOS DE IMPRESIÓN
