@@ -27,6 +27,73 @@ st.set_page_config(
     page_icon="💳",
     layout="wide",
     initial_sidebar_state="expanded",
+    )
+
+# =============================================================================
+# BANNER PRINCIPAL ANIMADO (CSS KEYFRAMES)
+# =============================================================================
+st.markdown(
+    """
+    <style>
+        /* Animación de flotación y brillo para el logo */
+        @keyframes floatAndGlow {
+            0% {
+                transform: translateY(0px) scale(1);
+                filter: drop-shadow(0 6px 15px rgba(56, 189, 248, 0.25));
+            }
+            50% {
+                transform: translateY(-8px) scale(1.02);
+                filter: drop-shadow(0 15px 25px rgba(56, 189, 248, 0.55));
+            }
+            100% {
+                transform: translateY(0px) scale(1);
+                filter: drop-shadow(0 6px 15px rgba(56, 189, 248, 0.25));
+            }
+        }
+
+        /* Contenedor del banner animado */
+        .animated-banner {
+            background: linear-gradient(135deg, #0A192F 0%, #112240 50%, #1E3A8A 100%);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            border-radius: 16px;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            margin-bottom: 25px;
+        }
+
+        .logo-img-animated {
+            max-width: 220px;
+            height: auto;
+            animation: floatAndGlow 4.5s ease-in-out infinite;
+            border-radius: 8px;
+        }
+
+        .banner-title {
+            color: #FFFFFF !important;
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-top: 15px;
+            margin-bottom: 5px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+        }
+
+        .banner-subtitle {
+            color: #94A3B8 !important;
+            font-size: 1.05rem;
+            margin: 0;
+            font-weight: 500;
+        }
+    </style>
+
+    <div class="animated-banner">
+        <img src="https://i.ibb.co/L5195G1/LOGOBANKCALI.png" class="logo-img-animated" alt="BankCali Logo">
+        <h1 class="banner-title">BankCali</h1>
+        <p class="banner-subtitle">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
+    </div>
+""",
+    unsafe_allow_html=True,
 )
 
 # =============================================================================
