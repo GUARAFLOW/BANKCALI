@@ -386,156 +386,64 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       "Simulación, cronograma de amortización y generación de ticket de venta"
       " imprimible."
   )
-    # Renderizado del Ticket POS (Solo se muestra si hay una venta reciente en session_state)
+  # Renderizado del Ticket POS (Solo se muestra si hay una venta reciente en session_state)
     if "ultimo_ticket" in st.session_state:
-      t = st.session_state["ultimo_ticket"]
+        t = st.session_state["ultimo_ticket"]
 
-      # Generar QR dinámico
-      qr_data = (
-          f"BANKCALI|CREDITO:{t['id']}|CEDULA:{t['cedula']}|TOTAL:{t['total']:,.0f}"
-      )
-      qr_img = qrcode.make(qr_data)
-      buffer = io.BytesIO()
-      qr_img.save(buffer, format="PNG")
-      qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
-      qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
+        # Generar QR dinámico
+        qr_data = f"BANKCALI|CREDITO:{t['id']}|CEDULA:{t['cedula']}|TOTAL:{t['total']:,.0f}"
+        qr_img = qrcode.make(qr_data)
+        buffer = io.BytesIO()
+        qr_img.save(buffer, format="PNG")
+        qr_b64_str = base64.b64encode(buffer.getvalue()).decode()
+        qr_html = f'<img src="data:image/png;base64,{qr_b64_str}" style="width: 85px; height: 85px; margin-top: 8px;" />'
 
-      # Preparar Logo
-      logo_html = ""
-      if t.get("logo_comercio"):
-        src_img = (
-            t["logo_comercio"]
-            if str(t["logo_comercio"]).startswith("data:image")
-            else f"data:image/png;base64,{t['logo_comercio']}"
-        )
-        logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
+        # Preparar Logo
+        logo_html = ""
+        if t.get("logo_comercio"):
+            src_img = t["logo_comercio"] if str(t["logo_comercio"]).startswith("data:image") else f"data:image/png;base64,{t['logo_comercio']}"
+            logo_html = f'<img src="{src_img}" style="max-height: 55px; max-width: 180px; margin-bottom: 6px;" /><br>'
 
-      ticket_html = f"""
-            <div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 20px auto; font-family: monospace; color: #111;">
-                <div style="text-align: center;">
-                    {logo_html}
-                    <h3 style="margin: 0; color: #0d233a;">{t['comercio']}</h3>
-                    <p style="margin: 4px 0; font-size: 12px;">Financiado por <b>BANKCALI</b><br>Puerto Rico, Caquetá<br><b>COMPROBANTE DE COMPRA A CRÉDITO</b></p>
-                </div>
-                <hr style="border: none; border-top: 1px dashed #666;">
-                <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-                    <b>N° Crédito:</b> {t['id']}<br>
-                    <b>Fecha:</b> {t['fecha']}<br>
-                    <b>Cliente:</b> {t['cliente']}<br>
-                    <b>Cédula:</b> {t['cedula']}
-                </p>
-                <hr style="border: none; border-top: 1px dashed #666;">
-                <p style="font-size: 13px; line-height: 1.6; margin: 0;">
-                    <b>Monto Compra:</b> ${t['monto']:,.0f} COP<br>
-                    <b>N° Cuotas:</b> {t['cuotas']} Quincenales<br>
-                    <b>Valor Cuota:</b> ${t['valor_cuota']:,.0f} COP<br>
-                    <b>Total a Pagar:</b> ${t['total']:,.0f} COP
-                </p>
-                <hr style="border: none; border-top: 1px dashed #666;">
-                <div style="text-align: center;">
-                    {qr_html}
-                    <p style="font-size: 10px; margin-top: 4px; color: #555;">Escanear para verificar comprobante</p>
-                    <p style="font-size: 11px; margin-top: 6px; color: #444;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
-                </div>
+        ticket_html = f"""
+        <div class="ticket-pos-box" style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 20px; background-color: #fffdf5; max-width: 380px; margin: 20px auto; font-family: monospace; color: #111;">
+            <div style="text-align: center;">
+                {logo_html}
+                <h3 style="margin: 0; color: #0d233a;">{t['comercio']}</h3>
+                <p style="margin: 4px 0; font-size: 12px;">Financiado por <b>BANKCALI</b><br>Puerto Rico, Caquetá<br><b>COMPROBANTE DE COMPRA A CRÉDITO</b></p>
             </div>
-            """
-      st.markdown(ticket_html, unsafe_allow_html=True)
+            <hr style="border: none; border-top: 1px dashed #666;">
+            <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+                <b>N° Crédito:</b> {t['id']}<br>
+                <b>Fecha:</b> {t['fecha']}<br>
+                <b>Cliente:</b> {t['cliente']}<br>
+                <b>Cédula:</b> {t['cedula']}
+            </p>
+            <hr style="border: none; border-top: 1px dashed #666;">
+            <p style="font-size: 13px; line-height: 1.6; margin: 0;">
+                <b>Monto Compra:</b> ${t['monto']:,.0f} COP<br>
+                <b>N° Cuotas:</b> {t['cuotas']} Quincenales<br>
+                <b>Valor Cuota:</b> ${t['valor_cuota']:,.0f} COP<br>
+                <b>Total a Pagar:</b> ${t['total']:,.0f} COP
+            </p>
+            <hr style="border: none; border-top: 1px dashed #666;">
+            <div style="text-align: center;">
+                {qr_html}
+                <p style="font-size: 10px; margin-top: 4px; color: #555;">Escanear para verificar comprobante</p>
+                <p style="font-size: 11px; margin-top: 6px; color: #444;">Firma Digital Verificada vía OTP SMS<br>¡Gracias por su compra!</p>
+            </div>
+        </div>
+        """
+        st.markdown(ticket_html, unsafe_allow_html=True)
 
-      js_btn = """
-            <script>
-            function imprimirTicket() { window.parent.print(); }
-            </script>
-            <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
-                🖨️ Imprimir Ticket / Guardar PDF
-            </button>
-            """
-      st.components.v1.html(js_btn, height=65)
-
-      if st.button(
-          "✅ Confirmar Venta y Otorgar Crédito", use_container_width=True
-      ):
-        if str(otp_ingresado) == str(st.session_state["otp_actual"]):
-          id_credito = f"CR-{random.randint(10000, 99999)}"
-          fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-          with conn.session as s:
-            s.execute(
-                text(
-                    "UPDATE clientes SET cupo_disponible = cupo_disponible -"
-                    " :monto WHERE cedula = :cedula"
-                ),
-                {"monto": monto_compra, "cedula": cedula},
-            )
-            s.execute(
-                text("""
-                            INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
-                            VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
-                        """),
-                {
-                    "id": id_credito,
-                    "fecha": fecha_hoy,
-                    "comercio": comercio_sel,
-                    "cedula": cedula,
-                    "monto": monto_compra,
-                    "cuotas": cuotas,
-                    "cuota": valor_cuota,
-                    "total": total_pagar,
-                    "saldo": total_pagar,
-                    "est": "ACTIVO",
-                },
-            )
-            s.commit()
-
-          msg_confirm_compra = (
-              f"BankCali: Su compra por ${monto_compra:,.0f} COP en"
-              f" {comercio_sel} fue aprobada. Credito Nro {id_credito}. Cuota:"
-              f" ${valor_cuota:,.0f} COP."
-          )
-          enviar_sms_twilio(celular, mensaje_custom=msg_confirm_compra)
-
-          st.balloons()
-          st.success(f"🎉 ¡Crédito Aprobado! ID Crédito: **{id_credito}**")
-
-          st.session_state["ultimo_ticket"] = {
-              "id": id_credito,
-              "fecha": fecha_hoy,
-              "comercio": comercio_sel,
-              "logo_comercio": logo_comercio,
-              "cliente": nombre_cliente,
-              "cedula": cedula,
-              "monto": monto_compra,
-              "cuotas": cuotas,
-              "valor_cuota": valor_cuota,
-              "total": total_pagar,
-              "df_amort": df_amort,
-          }
-          del st.session_state["otp_actual"]
-        else:
-          st.error("❌ Código OTP incorrecto.")
-         
-    import base64
-    import io
-    import qrcode
-
-    # =============================================================================
-    # GENERACIÓN DE TICKET POS CON LOGO Y CÓDIGO QR DINÁMICO
-    # =============================================================================
-
-    # 1. Rastrear automáticamente el nombre del comercio activo
-    comercio_nom = None
-    for var in [
-        "comercio_aliado",
-        "comercio_seleccionado",
-        "comercio",
-        "tienda",
-        "comercio_actual",
-    ]:
-      if var in locals() and locals()[var]:
-        val = str(locals()[var]).strip()
-        if val and val not in ["Comercio Aliado", "None", ""]:
-          comercio_nom = val
-          break
-
+        js_btn = """
+        <script>
+        function imprimirTicket() { window.parent.print(); }
+        </script>
+        <button onclick="imprimirTicket()" style="background-color: #0f2537; color: white; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-weight: bold; font-size: 15px; cursor: pointer;">
+            🖨️ Imprimir Ticket / Guardar PDF
+        </button>
+        """
+        st.components.v1.html(js_btn, height=65)
     if not comercio_nom:
       for key, val in st.session_state.items():
         if (
