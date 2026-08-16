@@ -386,7 +386,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
       "Simulación, cronograma de amortización y generación de ticket de venta"
       " imprimible."
   )
- # Renderizado del Ticket POS (Solo se muestra si hay una venta reciente en session_state)
+    # Renderizado del Ticket POS (Solo se muestra si hay una venta reciente en session_state)
     if "ultimo_ticket" in st.session_state:
       t = st.session_state["ultimo_ticket"]
 
