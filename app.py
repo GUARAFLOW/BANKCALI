@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 
-# Intentar importar Plotly opcionalmente
+# Importar Plotly opcionalmente
 try:
     import plotly.express as px
 
