@@ -308,23 +308,119 @@ if not st.session_state.autenticado:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <div style="text-align: center; padding: 20px;">
-            <h1 style="color: #1E3A8A; font-size: 2.5rem; margin-bottom: 10px;">BankCali</h1>
-            <p style="color: #555; font-size: 1.2rem; margin-bottom: 30px;">Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)</p>
-        </div>
-    """,
-        unsafe_allow_html=True,
-    )
+    # =========================================================================
+    # LOGO ANIMADO SVG (PANTALLA DE BIENVENIDA / PRE-LOGIN)
+    # =========================================================================
+    logo_svg_animado = """
+    <div style="display: flex; justify-content: center; align-items: center; flex-direction: column; width: 100%; min-height: 70vh; padding: 20px 0;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 180" width="100%" height="auto" style="max-width: 520px;">
+            <defs>
+                <style>
+                    /* Animación 1: Levitación 3D del Logo */
+                    @keyframes float3D {
+                        0%, 100% { transform: translateY(0px); }
+                        50% { transform: translateY(-9px); }
+                    }
 
-    col_centro1, col_centro2, col_centro3 = st.columns([1, 3, 1])
-    with col_centro2:
-        try:
-            st.image("LOGOBANKCALI.jpeg", use_container_width=True)
-        except Exception:
-            st.error("No se pudo cargar el logo principal de BankCali.")
+                    /* Animación 2: Resplandor en la flecha verde */
+                    @keyframes pulseGreen {
+                        0%, 100% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.2)); }
+                        50% { filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.95)); }
+                    }
 
+                    /* Animación 3: Destello de luz diagonal */
+                    @keyframes shineSweep {
+                        0% { transform: translateX(-200px) skewX(-20deg); }
+                        30%, 100% { transform: translateX(500px) skewX(-20deg); }
+                    }
+
+                    .logo-float {
+                        animation: float3D 3.8s infinite ease-in-out;
+                        transform-origin: center;
+                    }
+
+                    .green-arrow-glow {
+                        animation: pulseGreen 2.2s infinite ease-in-out;
+                    }
+
+                    .shine-effect {
+                        animation: shineSweep 4.5s infinite ease-in-out;
+                    }
+                </style>
+
+                <!-- Filtro Sombra 3D -->
+                <filter id="shadow3d" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="2" dy="5" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
+                </filter>
+
+                <!-- Gradientes de Color -->
+                <linearGradient id="blue3D" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#1D4ED8"/>
+                    <stop offset="50%" stop-color="#3B82F6"/>
+                    <stop offset="100%" stop-color="#93C5FD"/>
+                </linearGradient>
+
+                <linearGradient id="red3D" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#991B1B"/>
+                    <stop offset="50%" stop-color="#EF4444"/>
+                    <stop offset="100%" stop-color="#FCA5A5"/>
+                </linearGradient>
+
+                <linearGradient id="green3D" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#047857"/>
+                    <stop offset="60%" stop-color="#10B981"/>
+                    <stop offset="100%" stop-color="#6EE7B7"/>
+                </linearGradient>
+
+                <linearGradient id="brandText" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#1E3A8A"/>
+                    <stop offset="100%" stop-color="#0A192F"/>
+                </linearGradient>
+
+                <linearGradient id="shineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="rgba(255,255,255,0)"/>
+                    <stop offset="50%" stop-color="rgba(255,255,255,0.65)"/>
+                    <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+                </linearGradient>
+
+                <clipPath id="logoClip">
+                    <rect width="380" height="180" rx="10"/>
+                </clipPath>
+            </defs>
+
+            <!-- Grupo Principal con Levitación -->
+            <g class="logo-float" clip-path="url(#logoClip)">
+                <!-- Isotipo Formas 3D -->
+                <g filter="url(#shadow3d)">
+                    <path d="M 152 68 L 168 28 C 170 23 176 21 180 24 L 188 30 C 191 32 191 37 188 41 L 166 75 C 163 79 156 79 153 75 Z" fill="url(#blue3D)"/>
+                    <path d="M 175 62 L 192 18 C 194 13 200 11 204 14 L 213 21 C 216 23 216 28 213 32 L 190 70 C 187 74 180 74 177 70 Z" fill="url(#red3D)"/>
+                    
+                    <g class="green-arrow-glow">
+                        <path d="M 163 74 C 160 88 178 100 200 98 C 215 96 225 86 226 71 L 216 71 L 229 48 L 243 71 L 233 71 C 232 93 216 107 195 107 C 172 107 152 92 155 74 Z" fill="url(#green3D)"/>
+                    </g>
+                </g>
+
+                <!-- Texto Tipográfico -->
+                <g filter="url(#shadow3d)">
+                    <text x="190" y="148" text-anchor="middle" font-family="'Segoe UI', 'Inter', sans-serif" font-weight="900" font-size="44" fill="url(#brandText)" letter-spacing="-0.5">
+                        BankCali
+                    </text>
+                </g>
+
+                <!-- Destello Metálico Animado -->
+                <rect class="shine-effect" x="0" y="0" width="80" height="180" fill="url(#shineGrad)"/>
+            </g>
+        </svg>
+
+        <h2 style="color: #1E3A8A; font-family: 'Segoe UI', sans-serif; font-size: 1.8rem; font-weight: 700; margin-top: 15px; text-align: center;">
+            BankCali
+        </h2>
+        <p style="color: #475569; font-family: 'Segoe UI', sans-serif; font-size: 1.1rem; margin-top: 5px; text-align: center; font-weight: 500;">
+            Plataforma Financiera de Crédito Rotativo • Puerto Rico (Caquetá)
+        </p>
+    </div>
+    """
+    st.markdown(logo_svg_animado, unsafe_allow_html=True)
     st.stop()
 
 # =============================================================================
