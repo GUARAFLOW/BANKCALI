@@ -377,10 +377,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# =============================================================================
-# MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE CON LOGO
-# =============================================================================
-if opcion == "1. Simular / Solicitar Crédito (POS)":
+   # =============================================================================
+   # MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE CON LOGO
+   # =============================================================================
+  if opcion == "1. Simular / Solicitar Crédito (POS)":
   st.header("🏪 Módulo de Punto de Venta (Comercio Aliado)")
   st.markdown(
       "Simulación, cronograma de amortización y generación de ticket de venta"
