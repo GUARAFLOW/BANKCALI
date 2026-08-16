@@ -123,7 +123,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # =============================================================================
 # FUNCIONES AUXILIARES
 # =============================================================================
@@ -231,7 +230,6 @@ def reiniciar_formulario_pos():
     if "ultimo_ticket" in st.session_state:
         del st.session_state["ultimo_ticket"]
     st.session_state.compra_completada = False
-
 
 # =============================================================================
 # CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
@@ -590,6 +588,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                     }
                     st.session_state.compra_completada = True
                     del st.session_state["otp_actual"]
+                    st.rerun()
                 else:
                     st.error("❌ Código OTP incorrecto.")
 
@@ -748,12 +747,16 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         c_aval_comercio = st.checkbox(
             "¿Cuenta con aval/referencia directa del comercio aliado?", value=True
         )
+        c_moras = st.number_input(
+            "Moras previas registradas", min_value=0, max_value=10, value=0, step=1
+        )
 
     cupo_sugerido, nivel_riesgo, mensaje_eval = evaluar_riesgo_y_cupo(
         ingresos=c_ingresos,
         gastos=c_gastos,
         meses_residencia=c_meses_residencia,
         tiene_aval_comercio=c_aval_comercio,
+        moras_previas=c_moras,
     )
 
     st.markdown("---")
