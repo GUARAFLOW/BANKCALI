@@ -227,6 +227,12 @@ def generar_tabla_amortizacion(
     return df_amort, total_pagar, valor_cuota, monto_aval, interes_total
 
 
+def reiniciar_formulario_pos():
+    if "ultimo_ticket" in st.session_state:
+        del st.session_state["ultimo_ticket"]
+    st.session_state.compra_completada = False
+
+
 # =============================================================================
 # CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
 # =============================================================================
@@ -246,6 +252,9 @@ if "autenticado" not in st.session_state:
     st.session_state.rol = None
     st.session_state.nombre = None
     st.session_state.comercio_asignado = None
+
+if "compra_completada" not in st.session_state:
+    st.session_state.compra_completada = False
 
 # =============================================================================
 # PANEL DE LOGIN (BARRA LATERAL)
@@ -330,6 +339,7 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.rol = None
     st.session_state.nombre = None
     st.session_state.comercio_asignado = None
+    reiniciar_formulario_pos()
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -578,6 +588,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                         "total": total_pagar,
                         "df_amort": df_amort,
                     }
+                    st.session_state.compra_completada = True
                     del st.session_state["otp_actual"]
                 else:
                     st.error("❌ Código OTP incorrecto.")
@@ -585,7 +596,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
         # =============================================================================
         # RENDERIZADO DEL TICKET POS (SOLO SE MUESTRA TRAS UNA VENTA EXITOSA)
         # =============================================================================
-        if "ultimo_ticket" in st.session_state:
+        if st.session_state.compra_completada and "ultimo_ticket" in st.session_state:
             t = st.session_state["ultimo_ticket"]
 
             qr_data = f"BANKCALI|CREDITO:{t['id']}|CEDULA:{t['cedula']}|TOTAL:{t['total']:,.0f}"
@@ -671,6 +682,10 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             </button>
             """
             st.components.v1.html(js_btn, height=65)
+
+            if st.button("🔄 Registrar Nueva Compra / Limpiar Formulario", use_container_width=True):
+                reiniciar_formulario_pos()
+                st.rerun()
 
 # =============================================================================
 # MÓDULO 2: REGISTRAR NUEVO CLIENTE + SCORING DE CUPO COMUNITARIO
