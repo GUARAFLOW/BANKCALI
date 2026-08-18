@@ -19,6 +19,27 @@ except ImportError:
     HAS_PLOTLY = False
 
 # =============================================================================
+# FUNCIONES AUXILIARES DE CONVERSIÓN SEGURA
+# =============================================================================
+def safe_float(val, default=0.0):
+    """Convierte un valor a float de manera segura frente a None, NaN o cadenas inválidas."""
+    if val is None or pd.isna(val):
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+def safe_int(val, default=0):
+    """Convierte un valor a int de manera segura frente a None, NaN o cadenas inválidas."""
+    if val is None or pd.isna(val):
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+# =============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
 # =============================================================================
 st.set_page_config(
@@ -147,9 +168,9 @@ def obtener_parametros():
         if not df_p.empty:
             p = df_p.iloc[0]
             return (
-                float(p["tasa_interes"]) / 100.0,
-                float(p["pct_aval"]) / 100.0,
-                int(p["monto_minimo"]),
+                safe_float(p.get("tasa_interes"), 2.10) / 100.0,
+                safe_float(p.get("pct_aval"), 10.00) / 100.0,
+                safe_int(p.get("monto_minimo"), 80000),
             )
     except Exception:
         pass
@@ -458,8 +479,8 @@ def render_modulo_cliente():
         ttl=0,
     )
 
-    cupo_apr = float(cli.get("cupo_aprobado", 0))
-    cupo_dis = float(cli.get("cupo_disponible", 0))
+    cupo_apr = safe_float(cli.get("cupo_aprobado"), 0.0)
+    cupo_dis = safe_float(cli.get("cupo_disponible"), 0.0)
     cupo_uso = max(0.0, cupo_apr - cupo_dis)
 
     # Verificar morosidad general
@@ -522,8 +543,8 @@ def render_modulo_cliente():
             tasa_db, aval_db, _ = obtener_parametros()
 
             for _, credito in df_activos.iterrows():
-                n_cuotas = int(credito["cuotas"])
-                monto_c = float(credito["monto_compra"])
+                n_cuotas = safe_int(credito.get("cuotas"), 1)
+                monto_c = safe_float(credito.get("monto_compra"), 0.0)
 
                 df_a, _, _, _, _ = generar_tabla_amortizacion(monto_c, n_cuotas, pct_aval=aval_db, tasa_interes=tasa_db)
 
@@ -537,11 +558,11 @@ def render_modulo_cliente():
                     es_vencida = f_venc < datetime.now()
 
                     todas_cuotas.append({
-                        "ID Crédito": credito["id"],
-                        "Comercio": credito["comercio"],
+                        "ID Crédito": credito.get("id", "N/A"),
+                        "Comercio": credito.get("comercio", "N/A"),
                         "N° Cuota": fila["N° Cuota"],
                         "Fecha Vencimiento": f_venc.strftime("%Y-%m-%d"),
-                        "Valor Cuota ($ COP)": f"${fila['Valor Cuota ($)']:,.0f}",
+                        "Valor Cuota ($ COP)": f"${safe_float(fila['Valor Cuota ($)']):,.0f}",
                         "Estado": "🔴 VENCIDA" if es_vencida else "🟡 PENDIENTE",
                     })
 
@@ -556,28 +577,33 @@ def render_modulo_cliente():
             st.info("No se registran compras asociadas a este cliente.")
         else:
             for _, reg in df_sol.iterrows():
-                with st.expander(f"🛒 Compra en {reg['comercio']} - {reg['fecha']} (${float(reg['monto_compra']):,.0f} COP)"):
+                monto_reg = safe_float(reg.get('monto_compra'), 0.0)
+                saldo_reg = safe_float(reg.get('saldo_pendiente'), 0.0)
+                vlr_cuota_reg = safe_float(reg.get('valor_cuota'), 0.0)
+                total_reg = safe_float(reg.get('total_pagar'), 0.0)
+
+                with st.expander(f"🛒 Compra en {reg.get('comercio', 'N/A')} - {reg.get('fecha', '')} (${monto_reg:,.0f} COP)"):
                     col_t1, col_t2 = st.columns([3, 1])
                     with col_t1:
-                        st.write(f"**N° Crédito:** {reg['id']}")
-                        st.write(f"**Cuotas:** {reg['cuotas']} quincenales")
-                        st.write(f"**Saldo Pendiente:** ${float(reg['saldo_pendiente']):,.0f} COP")
-                        st.write(f"**Estado del Crédito:** {reg['estado']}")
+                        st.write(f"**N° Crédito:** {reg.get('id', 'N/A')}")
+                        st.write(f"**Cuotas:** {reg.get('cuotas', 0)} quincenales")
+                        st.write(f"**Saldo Pendiente:** ${saldo_reg:,.0f} COP")
+                        st.write(f"**Estado del Crédito:** {reg.get('estado', 'N/A')}")
 
                     with col_t2:
                         if st.button("🧾 Ver Ticket", key=f"btn_tck_{reg['id']}"):
                             st.session_state[f"show_ticket_{reg['id']}"] = True
 
                     if st.session_state.get(f"show_ticket_{reg['id']}", False):
-                        tck_id = reg['id']
-                        tck_fecha = reg['fecha']
-                        tck_comercio = reg['comercio']
-                        tck_monto = float(reg['monto_compra'])
-                        tck_cuotas = reg['cuotas']
-                        tck_vlr_cuota = float(reg['valor_cuota'])
-                        tck_total = float(reg['total_pagar'])
+                        tck_id = reg.get('id', '')
+                        tck_fecha = reg.get('fecha', '')
+                        tck_comercio = reg.get('comercio', '')
+                        tck_monto = monto_reg
+                        tck_cuotas = reg.get('cuotas', 0)
+                        tck_vlr_cuota = vlr_cuota_reg
+                        tck_total = total_reg
 
-                        qr_data = f"BANKCALI|CREDITO:{tck_id}|CEDULA:{cli['cedula']}|TOTAL:{tck_total:,.0f}"
+                        qr_data = f"BANKCALI|CREDITO:{tck_id}|CEDULA:{cli.get('cedula','')}|TOTAL:{tck_total:,.0f}"
                         qr_img = qrcode.make(qr_data)
                         buf = io.BytesIO()
                         qr_img.save(buf, format="PNG")
@@ -593,8 +619,8 @@ def render_modulo_cliente():
                             <p style="font-size: 12px; margin: 0;">
                                 <b>N° Crédito:</b> {tck_id}<br>
                                 <b>Fecha:</b> {tck_fecha}<br>
-                                <b>Cliente:</b> {cli['nombre']}<br>
-                                <b>Cédula:</b> {cli['cedula']}
+                                <b>Cliente:</b> {cli.get('nombre', '')}<br>
+                                <b>Cédula:</b> {cli.get('cedula', '')}
                             </p>
                             <hr style="border-top: 1px dashed #666;">
                             <p style="font-size: 12px; margin: 0;">
@@ -676,7 +702,7 @@ elif opcion == "1. Simular / Solicitar Crédito (POS)":
 
             match_comercio = df_comercios[df_comercios["nombre"] == comercio_sel]
             comercio_comercio = (
-                float(match_comercio["comision"].values[0])
+                safe_float(match_comercio["comision"].values[0], 5.0)
                 if not match_comercio.empty
                 else 5.0
             )
@@ -705,8 +731,9 @@ elif opcion == "1. Simular / Solicitar Crédito (POS)":
                 celular = st.text_input(
                     "Número de Celular", value=cliente_info["celular"]
                 )
+                cupo_dispon_cli = safe_float(cliente_info.get("cupo_disponible"), 0.0)
                 st.success(
-                    f"💡 **Cupo Disponible del Cliente:** ${cliente_info['cupo_disponible']:,.0f} COP"
+                    f"💡 **Cupo Disponible del Cliente:** ${cupo_dispon_cli:,.0f} COP"
                 )
             else:
                 nombre_cliente = st.text_input("Nombre Completo del Cliente")
@@ -752,7 +779,7 @@ elif opcion == "1. Simular / Solicitar Crédito (POS)":
             st.dataframe(df_amort, use_container_width=True, hide_index=True)
 
         excede_cupo = False
-        if cliente_info is not None and monto_compra > float(cliente_info["cupo_disponible"]):
+        if cliente_info is not None and monto_compra > safe_float(cliente_info.get("cupo_disponible"), 0.0):
             st.error("❌ La compra excede el cupo disponible del cliente.")
             excede_cupo = True
 
@@ -1177,9 +1204,9 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
             )
             fila_credito = df_sol[df_sol["id"] == credito_sel].iloc[0]
 
-            saldo_act = float(fila_credito["saldo_pendiente"])
-            vlr_cuota = float(fila_credito["valor_cuota"])
-            celular_cli = fila_credito["celular"]
+            saldo_act = safe_float(fila_credito.get("saldo_pendiente"), 0.0)
+            vlr_cuota = safe_float(fila_credito.get("valor_cuota"), 0.0)
+            celular_cli = fila_credito.get("celular", "")
 
             st.markdown("---")
             col_p1, col_p2 = st.columns(2)
@@ -1311,8 +1338,9 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
         )
         fila_mora = df_cartera[df_cartera["id"] == mora_sel].iloc[0]
 
+        v_cuota_mora = safe_float(fila_mora.get("valor_cuota"), 0.0)
         msg_recordatorio = (
-            f"BankCali: Hola {fila_mora['nombre']}, le recordamos que su cuota de ${fila_mora['valor_cuota']:,.0f} COP para el credito {fila_mora['id']} se encuentra proxima/vencida. Evite mora."
+            f"BankCali: Hola {fila_mora.get('nombre', '')}, le recordamos que su cuota de ${v_cuota_mora:,.0f} COP para el credito {fila_mora.get('id', '')} se encuentra proxima/vencida. Evite mora."
         )
         st.text_area("Vista previa del SMS de Recordatorio", msg_recordatorio, height=100)
 
@@ -1452,7 +1480,7 @@ elif opcion == "6. Gestión de Almacenes Aliados" and es_admin:
                             "Comisión (%) *",
                             min_value=1.0,
                             max_value=20.0,
-                            value=float(datos_com["comision"]),
+                            value=safe_float(datos_com.get("comision"), 5.0),
                             step=0.5,
                         )
                     with col_m2:
@@ -1549,17 +1577,13 @@ elif opcion == "7. Panel General de Administración" and es_admin:
         df_clientes_tot = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
 
         total_colocado = (
-            df_solicitudes["monto_compra"].sum() if not df_solicitudes.empty else 0
+            safe_float(df_solicitudes["monto_compra"].sum()) if not df_solicitudes.empty else 0.0
         )
         total_saldo = (
-            df_solicitudes["saldo_pendiente"].sum()
-            if not df_solicitudes.empty
-            else 0
+            safe_float(df_solicitudes["saldo_pendiente"].sum()) if not df_solicitudes.empty else 0.0
         )
         total_cupos = (
-            df_clientes_tot["cupo_aprobado"].sum()
-            if not df_clientes_tot.empty
-            else 0
+            safe_float(df_clientes_tot["cupo_aprobado"].sum()) if not df_clientes_tot.empty else 0.0
         )
 
         kpi1, kpi2, kpi3 = st.columns(3)
@@ -1623,8 +1647,8 @@ elif opcion == "7. Panel General de Administración" and es_admin:
 
                 st.markdown("##### 💰 Estado de Cobro y Capital Recuperado")
 
-                capital_total = float(df_solicitudes["monto_compra"].sum())
-                saldo_pendiente = float(df_solicitudes["saldo_pendiente"].sum())
+                capital_total = safe_float(df_solicitudes["monto_compra"].sum())
+                saldo_pendiente = safe_float(df_solicitudes["saldo_pendiente"].sum())
                 capital_recuperado = max(0.0, capital_total - saldo_pendiente)
 
                 df_balance = pd.DataFrame({
@@ -1671,8 +1695,8 @@ elif opcion == "7. Panel General de Administración" and es_admin:
                     )
 
                 st.markdown("##### 💰 Capital Recuperado vs. Pendiente por Cobrar")
-                cap_tot = float(df_solicitudes["monto_compra"].sum())
-                sal_pend = float(df_solicitudes["saldo_pendiente"].sum())
+                cap_tot = safe_float(df_solicitudes["monto_compra"].sum())
+                sal_pend = safe_float(df_solicitudes["saldo_pendiente"].sum())
                 cap_rec = max(0.0, cap_tot - sal_pend)
 
                 df_bal_native = pd.DataFrame(
