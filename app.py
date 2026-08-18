@@ -10,6 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
+import sys
+from datetime import datetime, timedelta
 
 # Importar Plotly opcionalmente para analítica gráfica
 try:
@@ -17,6 +19,61 @@ try:
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
+
+# =============================================================================
+# MODO TAREA PROGRAMADA / SEGUNDO PLANO (EJECUCIÓN VÍA CRON O GITHUB ACTIONS)
+# =============================================================================
+def ejecutar_recordatorios_cron():
+    """Ejecuta el chequeo y envío automático de SMS sin cargar la interfaz gráfica."""
+    print(f"--- Iniciando tarea automatizada BankCali ({datetime.now().strftime('%Y-%m-%d %H:%M')}) ---")
+    try:
+        df_cartera = conn.query(
+            """
+            SELECT s.id, s.fecha, s.valor_cuota, s.saldo_pendiente, c.nombre, c.celular 
+            FROM solicitudes s
+            JOIN clientes c ON s.cedula_cliente = c.cedula
+            WHERE s.estado = 'ACTIVO' AND s.saldo_pendiente > 0
+            """,
+            ttl=0,
+        )
+
+        if df_cartera.empty:
+            print("ℹ️ No hay créditos activos con cartera pendiente.")
+            return
+
+        hoy = datetime.now()
+        envios = 0
+
+        for _, reg in df_cartera.iterrows():
+            try:
+                f_inicio = datetime.strptime(str(reg["fecha"])[:10], "%Y-%m-%d")
+            except Exception:
+                continue
+
+            # Revisar vencimientos quincenales a 3 días o menos
+            for q in range(1, 9):
+                f_venc = f_inicio + timedelta(days=15 * q)
+                dias_faltantes = (f_venc - hoy).days
+
+                if 0 <= dias_faltantes <= 3:
+                    msg = (
+                        f"BankCali: Hola {reg['nombre']}, recordatorio de tu cuota de "
+                        f"${safe_float(reg['valor_cuota']):,.0f} COP (credito {reg['id']}) con vencimiento el "
+                        f"{f_venc.strftime('%d/%m/%Y')}. Favor realizar su pago a tiempo."
+                    )
+                    exito, _ = enviar_sms_twilio(reg["celular"], mensaje_custom=msg)
+                    if exito:
+                        envios += 1
+                    break
+
+        print(f"✅ Proceso finalizado. SMS enviados: {envios}")
+    except Exception as e:
+        print(f"❌ Error en la ejecucion cron: {e}")
+
+# Si se invoca desde la consola como "python app.py --cron", ejecuta la tarea y finaliza
+if len(sys.argv) > 1 and sys.argv[1] == "--cron":
+    ejecutar_recordatorios_cron()
+    sys.exit(0)
 
 # =============================================================================
 # FUNCIONES AUXILIARES DE CONVERSIÓN SEGURA
