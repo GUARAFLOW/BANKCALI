@@ -1349,13 +1349,11 @@ elif opcion == "3. Registrar Pagos / Abonar Cuotas" and es_admin:
                     )
 
 # =============================================================================
-# MÓDULO 4: CONTROL DE CARTERA VENCIDA Y MORA (COBRANZAS)
+# MÓDULO 4: CONTROL DE CARTERA Y COBRANZAS (INTERFAZ WEB Y ENVÍO MANUAL)
 # =============================================================================
 elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
-    st.header("⚠️ Panel de Control de Cartera y Gestión de Mora")
-    st.markdown(
-        "Seguimiento de cuotas, semáforo de riesgo y recordatorios masivos e individuales por SMS."
-    )
+    st.header("⚠️ Panel de Cartera y Recordatorios Automáticos")
+    st.markdown("Control de cobranza interactivo y ejecución masiva manual de SMS.")
     st.markdown("---")
 
     df_cartera = conn.query(
@@ -1363,13 +1361,13 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
         SELECT s.id, s.fecha, s.comercio, c.nombre, c.cedula, c.celular, s.monto_compra, s.valor_cuota, s.saldo_pendiente, s.estado
         FROM solicitudes s
         JOIN clientes c ON s.cedula_cliente = c.cedula
-        WHERE s.estado = 'ACTIVO'
+        WHERE s.estado = 'ACTIVO' AND s.saldo_pendiente > 0
     """,
         ttl=0,
     )
 
     if df_cartera.empty:
-        st.success("🎉 ¡Excelente! No hay créditos activos o en cartera pendiente actualmente.")
+        st.success("🎉 No hay créditos activos con saldos pendientes actualmente.")
     else:
         df_cartera["Fecha_DT"] = pd.to_datetime(df_cartera["fecha"])
         hoy = datetime.now()
@@ -1386,18 +1384,50 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
         df_cartera["Estado_Mora"] = df_cartera["Dias_Transcurridos"].apply(clasificar_mora)
 
         col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("Total Créditos Activos", len(df_cartera))
-        col_m2.metric(
-            "Cartera en Riesgo / Mora",
-            len(df_cartera[df_cartera["Estado_Mora"] != "🟢 Al Día"]),
-        )
-        col_m3.metric(
-            "Saldo Total Pendiente",
-            f"${df_cartera['saldo_pendiente'].sum():,.0f} COP",
-        )
+        col_m1.metric("Créditos Activos", len(df_cartera))
+        col_m2.metric("En Vencimiento / Mora", len(df_cartera[df_cartera["Estado_Mora"] != "🟢 Al Día"]))
+        col_m3.metric("Saldo Cartera Total", f"${df_cartera['saldo_pendiente'].sum():,.0f} COP")
 
         st.markdown("---")
-        st.subheader("📋 Lista de Créditos en Seguimiento")
+        st.subheader("📢 Disparo Masivo Manual de Recordatorios")
+
+        col_aut1, col_aut2 = st.columns([2, 1])
+        with col_aut1:
+            filtro_envio = st.multiselect(
+                "Filtrar clientes para envío masivo:",
+                ["🟡 Vencimiento Cercano", "🔴 En Mora (>30 días)", "🟢 Al Día"],
+                default=["🟡 Vencimiento Cercano", "🔴 En Mora (>30 días)"],
+            )
+
+        with col_aut2:
+            st.write(" ")
+            st.write(" ")
+            btn_ejecutar_masivo = st.button("🚀 Enviar SMS Masivos", type="primary", use_container_width=True)
+
+        if btn_ejecutar_masivo:
+            creditos_filtrados = df_cartera[df_cartera["Estado_Mora"].isin(filtro_envio)]
+            if creditos_filtrados.empty:
+                st.warning("⚠️ No hay registros que coincidan con los filtros seleccionados.")
+            else:
+                envios_exitosos = 0
+                progreso = st.progress(0, text="Iniciando envío de mensajes...")
+
+                total = len(creditos_filtrados)
+                for idx, (_, fila) in enumerate(creditos_filtrados.iterrows()):
+                    v_cuota = safe_float(fila.get("valor_cuota"), 0.0)
+                    msg = (
+                        f"BankCali: Hola {fila['nombre']}, tu cuota de ${v_cuota:,.0f} COP (credito {fila['id']}) "
+                        f"esta {fila['Estado_Mora'].split()[-1]}. Por favor realiza tu pago para mantener tu cupo activo."
+                    )
+                    exito, _ = enviar_sms_twilio(fila["celular"], mensaje_custom=msg)
+                    if exito:
+                        envios_exitosos += 1
+                    progreso.progress((idx + 1) / total, text=f"Enviando {idx + 1} de {total}...")
+
+                st.success(f"✅ Finalizado. Se enviaron correctamente {envios_exitosos} de {total} SMS.")
+
+        st.markdown("---")
+        st.subheader("📋 Detalle General de Cartera")
         st.dataframe(
             df_cartera[[
                 "id",
@@ -1412,34 +1442,6 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
             use_container_width=True,
             hide_index=True,
         )
-
-        st.markdown("---")
-        st.subheader("📲 Gestión de Cobranza e Notificaciones SMS")
-
-        mora_sel = st.selectbox(
-            "Seleccione un Crédito para enviar Recordatorio de Pago",
-            df_cartera["id"].tolist(),
-        )
-        fila_mora = df_cartera[df_cartera["id"] == mora_sel].iloc[0]
-
-        v_cuota_mora = safe_float(fila_mora.get("valor_cuota"), 0.0)
-        msg_recordatorio = (
-            f"BankCali: Hola {fila_mora.get('nombre', '')}, le recordamos que su cuota de ${v_cuota_mora:,.0f} COP para el credito {fila_mora.get('id', '')} se encuentra proxima/vencida. Evite mora."
-        )
-        st.text_area("Vista previa del SMS de Recordatorio", msg_recordatorio, height=100)
-
-        if st.button("📩 Enviar Recordatorio por SMS / WhatsApp"):
-            exito_cob, _ = enviar_sms_twilio(
-                fila_mora["celular"], mensaje_custom=msg_recordatorio
-            )
-            if exito_cob:
-                st.success(
-                    f"✅ Recordatorio enviado con éxito al número {fila_mora['celular']}."
-                )
-
-# =============================================================================
-# MÓDULO 5: GESTIÓN GENERAL DE CLIENTES (SOLO ADMIN)
-# =============================================================================
 # =============================================================================
 # MÓDULO 5: GESTIÓN GENERAL DE CLIENTES Y APROBACIÓN DE SOLICITUDES (SOLO ADMIN)
 # =============================================================================
