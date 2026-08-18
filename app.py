@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 
-# Intentar importar Plotly opcionalmente
+# Importar Plotly opcionalmente para analítica gráfica
 try:
     import plotly.express as px
 
@@ -79,28 +79,8 @@ st.markdown(
             margin: 0 auto;
             box-shadow: 0 4px 10px rgba(0,0,0,0.08);
         }
-        .btn-print {
-            display: block;
-            width: 100%;
-            max-width: 420px;
-            margin: 15px auto 0 auto;
-            background-color: #1E3A8A;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-        }
-        .btn-print:hover {
-            background-color: #0A192F;
-            color: #38BDF8;
-        }
 
-        /* CONFIGURACIÓN DE IMPRESIÓN */
+        /* CONFIGURACIÓN DE IMPRESIÓN IMPRESORA TÉRMICA / PDF */
         @media print {
             body * {
                 visibility: hidden;
@@ -123,9 +103,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # =============================================================================
-# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
+# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS EN SUPABASE
 # =============================================================================
 conn = st.connection("supabase", type="sql")
 
@@ -156,11 +135,11 @@ try:
 except Exception:
     pass
 
-
 # =============================================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES Y CONSULTA DE PARÁMETROS CENTRALIZADOS
 # =============================================================================
 def obtener_parametros():
+    """Consulta la tasa activa, aval y monto mínimo centralizados en Supabase."""
     try:
         df_p = conn.query(
             "SELECT tasa_interes, pct_aval, monto_minimo FROM parametros WHERE id = 1",
@@ -204,12 +183,17 @@ def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
         mensaje_encoded = urllib.parse.quote(mensaje_body)
         wa_url = f"https://api.whatsapp.com/send?phone={celular_limpio}&text={mensaje_encoded}"
 
-        st.warning("⚠️ **Respaldo Gratuito Activado (Fallo Twilio / Sin Saldo):**")
-        st.markdown(f"👉 [Clic aquí para enviar OTP por WhatsApp Gratis al cliente]({wa_url})", unsafe_allow_html=True)
+        st.warning("⚠️ **Respaldo Gratuito Activado (WhatsApp):**")
+        st.markdown(
+            f"👉 [Clic aquí para enviar OTP por WhatsApp Gratis al cliente]({wa_url})",
+            unsafe_allow_html=True,
+        )
         return False, str(e)
 
 
-def evaluar_riesgo_y_cupo(ingresos, gastos, meses_residencia=12, tiene_aval_comercio=True, moras_previas=0):
+def evaluar_riesgo_y_cupo(
+    ingresos, gastos, meses_residencia=12, tiene_aval_comercio=True, moras_previas=0
+):
     pct_gastos = (gastos / ingresos) if ingresos > 0 else 1
     margen_disponible = ingresos - gastos
 
@@ -219,10 +203,14 @@ def evaluar_riesgo_y_cupo(ingresos, gastos, meses_residencia=12, tiene_aval_come
     if not tiene_aval_comercio:
         score_local -= 25
     if moras_previas > 0:
-        score_local -= (moras_previas * 30)
+        score_local -= moras_previas * 30
 
     if margen_disponible <= 0 or score_local < 45:
-        return 0, "RECHAZADO", "❌ Crédito no aprobado por alto riesgo de arraigo o capacidad de pago insuficiente."
+        return (
+            0,
+            "RECHAZADO",
+            "❌ Crédito no aprobado por alto riesgo de arraigo o capacidad de pago insuficiente.",
+        )
 
     if 100000 <= ingresos <= 1000000:
         cupo_base = 80000 if pct_gastos <= 0.40 else 50000
@@ -284,6 +272,7 @@ def reiniciar_formulario_pos():
     st.session_state.compra_completada = False
 
 
+# Manejo de estado de la sesión
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.rol = None
@@ -399,7 +388,7 @@ if es_admin:
         "5. Gestión General de Clientes",
         "6. Gestión de Almacenes Aliados",
         "7. Panel General de Administración",
-        "8. Gestión de Usuarios",
+        "8. Gestión de Usuarios y Parámetros",
     ])
 
 st.sidebar.markdown("### 🧭 Menú de Navegación")
@@ -434,6 +423,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     )
     st.markdown("---")
 
+    # Obtención de parámetros centralizados en Supabase
     tasa_db, aval_db, monto_min_db = obtener_parametros()
 
     try:
@@ -532,10 +522,11 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
 
         st.markdown("---")
         st.subheader("📊 Resumen Financiero y Cronograma de Pagos")
-        res1, res2, res3 = st.columns(3)
-        res1.metric("Valor Cuota Quincenal", f"${valor_cuota:,.0f} COP")
-        res2.metric("Total a Pagar por Cliente", f"${total_pagar:,.0f} COP")
-        res3.metric("Desembolso Neto a Comercio", f"${desembolso:,.0f} COP")
+        res1, res2, res3, res4 = st.columns(4)
+        res1.metric("Cuota Quincenal", f"${valor_cuota:,.0f} COP")
+        res2.metric("Total a Pagar", f"${total_pagar:,.0f} COP")
+        res3.metric("Tasa Aplicada (Supabase)", f"{tasa_db * 100:.2f}% Mes")
+        res4.metric("Desembolso Neto Tienda", f"${desembolso:,.0f} COP")
 
         with st.expander(
             "📅 Ver Tabla de Amortización Quincenal Completa", expanded=False
@@ -741,7 +732,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
 
     if es_admin:
         st.info(
-            "💡 **Política de Crédito Comunitario:** Evaluación ponderada basada en margen disponible, meses de residencia local y aval del comercio aliado (Scoring Score de 0 a 100 pts)."
+            f"💡 **Política Activa:** Tasa vigente del {tasa_db * 100:.2f}% mes, tarifa aval del {aval_db * 100:.1f}%. Scoring ponderado por margen disponible, residencia y aval local."
         )
 
     st.markdown("---")
@@ -1483,7 +1474,7 @@ elif opcion == "7. Panel General de Administración" and es_admin:
 # =============================================================================
 # MÓDULO 8: GESTIÓN DE USUARIOS Y PARÁMETROS (EXCLUSIVO ADMINISTRADOR)
 # =============================================================================
-elif opcion == "8. Gestión de Usuarios":
+elif opcion == "8. Gestión de Usuarios y Parámetros":
 
     if not es_admin:
         st.error(
@@ -1491,14 +1482,14 @@ elif opcion == "8. Gestión de Usuarios":
         )
     else:
         st.header("👥 Administración de Usuarios y Parámetros del Sistema")
-        st.caption("Módulo Exclusivo Administrativo • Control de Cuentas y Reglas")
+        st.caption("Módulo Exclusivo Administrativo • Control de Cuentas y Reglas Centralizadas")
         st.markdown("---")
 
         tab_listar, tab_agregar, tab_editar, tab_param, tab_eliminar = st.tabs([
             "📋 Usuarios Registrados",
             "➕ Agregar Usuario",
             "✏️ Modificar Usuario",
-            "⚙️ Parámetros del Sistema",
+            "⚙️ Parámetros en Supabase",
             "🗑️ Eliminar Usuario",
         ])
 
@@ -1682,8 +1673,8 @@ elif opcion == "8. Gestión de Usuarios":
                 st.error(f"Error al cargar información para edición: {e}")
 
         with tab_param:
-            st.subheader("⚙️ Configuración Global de Políticas y Parámetros")
-            st.caption("Ajusta los parámetros operativos de BankCali guardados en Supabase.")
+            st.subheader("⚙️ Configuración Global de Tasas y Parámetros")
+            st.caption("Cualquier cambio realizado aquí se aplicará inmediatamente a la Web y a la Aplicación Móvil.")
 
             tasa_db, aval_db, monto_min_db = obtener_parametros()
 
@@ -1712,7 +1703,7 @@ elif opcion == "8. Gestión de Usuarios":
                 st.text_input("Departamento", value="Caquetá")
                 st.number_input("Días de Corte Quincenal", value=15, step=1)
 
-            if st.button("💾 Guardar Parámetros en Supabase"):
+            if st.button("💾 Guardar Parámetros en Supabase", use_container_width=True):
                 try:
                     with conn.session as s:
                         s.execute(
