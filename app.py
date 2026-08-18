@@ -657,6 +657,18 @@ def render_modulo_cliente():
 if "Portal de Cliente" in opcion:
     render_modulo_cliente()
 
+# Invocación directa del procedimiento RPC en Supabase
+res = supabase.rpc("procesar_ampliacion_cupo", {
+    "p_cliente_id": cliente_id,
+    "p_monto_solicitado": monto_ingresado
+}).execute()
+
+resultado = res.data
+if resultado["aprobado"]:
+    st.success(resultado["mensaje"])
+elif resultado["requiere_admin"]:
+    st.info(resultado["mensaje"])
+
 # =============================================================================
 # MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE
 # =============================================================================
