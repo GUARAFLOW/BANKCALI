@@ -651,23 +651,38 @@ def render_modulo_cliente():
             btn_enviar_sol = st.form_submit_button("🚀 Enviar Solicitud a Evaluación")
 
             if btn_enviar_sol:
-                st.success("✅ Tu solicitud de crédito/ampliación ha sido enviada con éxito al administrador.")
+                try:
+                    id_sol = f"SOL-{random.randint(10000, 99999)}"
+                    fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    num_cuotas = safe_int(plazo_pref.split()[0], 2)
+                    
+                    with conn.session as s:
+                        s.execute(
+                            text("""
+                                INSERT INTO solicitudes (id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado) 
+                                VALUES (:id, :fecha, :comercio, :cedula, :monto, :cuotas, :cuota, :total, :saldo, :est)
+                            """),
+                            {
+                                "id": id_sol,
+                                "fecha": fecha_hoy,
+                                "comercio": f"Solicitud Directa ({tipo_sol})",
+                                "cedula": doc_cliente,
+                                "monto": monto_sol,
+                                "cuotas": num_cuotas,
+                                "cuota": round(monto_sol / num_cuotas, 0),
+                                "total": monto_sol,
+                                "saldo": monto_sol,
+                                "est": "PENDIENTE",
+                            },
+                        )
+                        s.commit()
+                    st.success("✅ Tu solicitud de crédito/ampliación ha sido enviada con éxito al administrador.")
+                except Exception as e:
+                    st.error(f"❌ Error al procesar la solicitud en base de datos: {e}")
 
 # RENDERIZADO DEL PORTAL CLIENTE
 if "Portal de Cliente" in opcion:
     render_modulo_cliente()
-
-# Invocación directa del procedimiento RPC en Supabase
-res = supabase.rpc("procesar_ampliacion_cupo", {
-    "p_cliente_id": cliente_id,
-    "p_monto_solicitado": monto_ingresado
-}).execute()
-
-resultado = res.data
-if resultado["aprobado"]:
-    st.success(resultado["mensaje"])
-elif resultado["requiere_admin"]:
-    st.info(resultado["mensaje"])
 
 # =============================================================================
 # MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE
