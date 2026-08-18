@@ -1383,20 +1383,147 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
 # =============================================================================
 # MÓDULO 5: GESTIÓN GENERAL DE CLIENTES (SOLO ADMIN)
 # =============================================================================
+# =============================================================================
+# MÓDULO 5: GESTIÓN GENERAL DE CLIENTES Y APROBACIÓN DE SOLICITUDES (SOLO ADMIN)
+# =============================================================================
 elif opcion == "5. Gestión General de Clientes" and es_admin:
-    st.header("👥 Directorio y Gestión de Clientes Registrados")
-    st.markdown("Consulta general, actualización de cupos y estado de cuenta.")
+    st.header("👥 Gestión de Clientes y Solicitudes de Crédito")
+    st.markdown("Consulta general de clientes y evaluación de solicitudes de ampliación o nuevos créditos.")
     st.markdown("---")
 
-    try:
-        df_clientes = conn.query("SELECT * FROM clientes", ttl=0)
-        if not df_clientes.empty:
-            st.dataframe(df_clientes, use_container_width=True, hide_index=True)
-            st.caption(f"Total de clientes en base de datos: **{len(df_clientes)}**")
+    tab_directorio, tab_pendientes = st.tabs([
+        "📋 Directorio de Clientes",
+        "📥 Solicitudes Pendientes de Evaluación",
+    ])
+
+    # 1. DIRECTORIO GENERAL
+    with tab_directorio:
+        try:
+            df_clientes = conn.query("SELECT * FROM clientes", ttl=0)
+            if not df_clientes.empty:
+                st.dataframe(df_clientes, use_container_width=True, hide_index=True)
+                st.caption(f"Total de clientes en base de datos: **{len(df_clientes)}**")
+            else:
+                st.info("No hay clientes registrados en la plataforma.")
+        except Exception as e:
+            st.error(f"Error al cargar clientes: {e}")
+
+    # 2. EVALUACIÓN Y APROBACIÓN DE SOLICITUDES PENDIENTES
+    with tab_pendientes:
+        st.subheader("📥 Solicitudes de Crédito o Ampliación Pendientes")
+
+        df_pendientes = conn.query(
+            """
+            SELECT s.id, s.fecha, s.comercio, s.cedula_cliente, c.nombre, c.celular, s.monto_compra, s.cuotas, s.valor_cuota, s.estado
+            FROM solicitudes s
+            LEFT JOIN clientes c ON s.cedula_cliente = c.cedula
+            WHERE s.estado = 'PENDIENTE'
+            ORDER BY s.fecha DESC
+            """,
+            ttl=0,
+        )
+
+        if df_pendientes.empty:
+            st.success("🎉 No hay solicitudes pendientes por evaluar en este momento.")
         else:
-            st.info("No hay clientes registrados en la plataforma.")
-    except Exception as e:
-        st.error(f"Error al cargar clientes: {e}")
+            st.dataframe(
+                df_pendientes[[
+                    "id",
+                    "fecha",
+                    "comercio",
+                    "cedula_cliente",
+                    "nombre",
+                    "monto_compra",
+                    "cuotas",
+                    "estado",
+                ]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("---")
+            sol_sel = st.selectbox(
+                "Selecciona una Solicitud para Aprobar o Rechazar:",
+                df_pendientes["id"].tolist(),
+            )
+
+            if sol_sel:
+                detalle = df_pendientes[df_pendientes["id"] == sol_sel].iloc[0]
+
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    st.info(f"""
+                    **Cliente:** {detalle['nombre']} ({detalle['cedula_cliente']})  
+                    **Celular:** {detalle['celular']}  
+                    **Tipo/Origen:** {detalle['comercio']}
+                    """)
+
+                with col_d2:
+                    st.warning(f"""
+                    **Monto Solicitado:** ${safe_float(detalle['monto_compra']):,.0f} COP  
+                    **Plazo Solicitado:** {detalle['cuotas']} quincenas  
+                    **Cuota Estimada:** ${safe_float(detalle['valor_cuota']):,.0f} COP
+                    """)
+
+                col_btn1, col_btn2 = st.columns(2)
+
+                # BOTÓN APROBAR
+                with col_btn1:
+                    if st.button("✅ Aprobar Solicitud", use_container_width=True, type="primary"):
+                        try:
+                            with conn.session as s:
+                                # Si es ampliación de cupo, incrementa cupo_aprobado y cupo_disponible en clientes
+                                if "Ampliación" in str(detalle["comercio"]):
+                                    s.execute(
+                                        text("""
+                                            UPDATE clientes 
+                                            SET cupo_aprobado = cupo_aprobado + :monto,
+                                                cupo_disponible = cupo_disponible + :monto
+                                            WHERE cedula = :ced
+                                        """),
+                                        {
+                                            "monto": detalle["monto_compra"],
+                                            "ced": detalle["cedula_cliente"],
+                                        },
+                                    )
+                                    s.execute(
+                                        text("UPDATE solicitudes SET estado = 'APROBADO' WHERE id = :id"),
+                                        {"id": sol_sel},
+                                    )
+                                else:
+                                    # Si es un crédito especial directo, pasa a estado ACTIVO
+                                    s.execute(
+                                        text("UPDATE solicitudes SET estado = 'ACTIVO' WHERE id = :id"),
+                                        {"id": sol_sel},
+                                    )
+                                s.commit()
+
+                            msg_app = f"BankCali: Tu solicitud {sol_sel} por ${safe_float(detalle['monto_compra']):,.0f} COP ha sido APROBADA."
+                            enviar_sms_twilio(detalle["celular"], mensaje_custom=msg_app)
+
+                            st.success(f"✅ La solicitud **{sol_sel}** fue aprobada exitosamente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al aprobar la solicitud: {e}")
+
+                # BOTÓN RECHAZAR
+                with col_btn2:
+                    if st.button("❌ Rechazar Solicitud", use_container_width=True):
+                        try:
+                            with conn.session as s:
+                                s.execute(
+                                    text("UPDATE solicitudes SET estado = 'RECHAZADO' WHERE id = :id"),
+                                    {"id": sol_sel},
+                                )
+                                s.commit()
+
+                            msg_rej = f"BankCali: Tu solicitud {sol_sel} ha sido RECHAZADA tras la evaluacion de riesgo."
+                            enviar_sms_twilio(detalle["celular"], mensaje_custom=msg_rej)
+
+                            st.error(f"❌ La solicitud **{sol_sel}** fue rechazada.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al rechazar la solicitud: {e}")
 
 # =============================================================================
 # MÓDULO 6: GESTIÓN DE ALMACENES ALIADOS (SOLO ADMIN)
