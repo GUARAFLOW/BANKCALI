@@ -125,8 +125,59 @@ st.markdown(
 
 
 # =============================================================================
+# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
+# =============================================================================
+conn = st.connection("supabase", type="sql")
+
+try:
+    with conn.session as s:
+        s.execute(
+            text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
+        )
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS parametros (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    tasa_interes NUMERIC(5,2) DEFAULT 2.10,
+                    pct_aval NUMERIC(5,2) DEFAULT 10.00,
+                    monto_minimo INT DEFAULT 80000,
+                    CONSTRAINT single_row CHECK (id = 1)
+                );
+            """)
+        )
+        s.execute(
+            text("""
+                INSERT INTO parametros (id, tasa_interes, pct_aval, monto_minimo)
+                VALUES (1, 2.10, 10.00, 80000)
+                ON CONFLICT (id) DO NOTHING;
+            """)
+        )
+        s.commit()
+except Exception:
+    pass
+
+
+# =============================================================================
 # FUNCIONES AUXILIARES
 # =============================================================================
+def obtener_parametros():
+    try:
+        df_p = conn.query(
+            "SELECT tasa_interes, pct_aval, monto_minimo FROM parametros WHERE id = 1",
+            ttl=0,
+        )
+        if not df_p.empty:
+            p = df_p.iloc[0]
+            return (
+                float(p["tasa_interes"]) / 100.0,
+                float(p["pct_aval"]) / 100.0,
+                int(p["monto_minimo"]),
+            )
+    except Exception:
+        pass
+    return 0.021, 0.10, 80000
+
+
 def enviar_sms_twilio(celular_cliente, codigo_otp=None, mensaje_custom=None):
     celular_limpio = "".join(filter(str.isdigit, str(celular_cliente)))
     if not celular_limpio.startswith("57"):
@@ -232,20 +283,6 @@ def reiniciar_formulario_pos():
         del st.session_state["ultimo_ticket"]
     st.session_state.compra_completada = False
 
-
-# =============================================================================
-# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS
-# =============================================================================
-conn = st.connection("supabase", type="sql")
-
-try:
-    with conn.session as s:
-        s.execute(
-            text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
-        )
-        s.commit()
-except Exception:
-    pass
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -397,6 +434,8 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
     )
     st.markdown("---")
 
+    tasa_db, aval_db, monto_min_db = obtener_parametros()
+
     try:
         df_comercios = conn.query(
             "SELECT nombre, comision, logo_base64 FROM comercios", ttl=0
@@ -473,10 +512,10 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
             st.markdown("##### 🛒 Detalles de la Compra")
             monto_compra = st.number_input(
                 "Monto de la Compra ($ COP)",
-                min_value=80000,
+                min_value=monto_min_db,
                 max_value=5000000,
                 step=10000,
-                value=80000,
+                value=max(monto_min_db, 80000),
             )
             cuotas = st.selectbox("Número de Cuotas (Quincenales)", [2, 3, 4, 6, 8])
 
@@ -486,7 +525,9 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                 valor_cuota,
                 monto_aval,
                 interes_total,
-            ) = generar_tabla_amortizacion(monto_compra, cuotas)
+            ) = generar_tabla_amortizacion(
+                monto_compra, cuotas, pct_aval=aval_db, tasa_interes=tasa_db
+            )
             desembolso = monto_compra * (1 - (comercio_comercio / 100))
 
         st.markdown("---")
@@ -696,6 +737,8 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
         "Sistema automatizado de scoring crediticio comunitario con verificación por SMS (OTP) / WhatsApp y aceptación contractual."
     )
 
+    tasa_db, aval_db, _ = obtener_parametros()
+
     if es_admin:
         st.info(
             "💡 **Política de Crédito Comunitario:** Evaluación ponderada basada en margen disponible, meses de residencia local y aval del comercio aliado (Scoring Score de 0 a 100 pts)."
@@ -793,7 +836,7 @@ elif opcion == "2. Registrar Nuevo Cliente + Scoring de Cupo":
                 <p><strong>Partes:</strong> BankCali (Operador Financiero Puerto Rico, Caquetá) y el Cliente titular de la Cédula No. <strong>{c_cedula}</strong> ({c_nombre}).</p>
                 <p><strong>1. OBJETO:</strong> BankCali otorga al CLIENTE una línea de Crédito Rotativo con un cupo aprobado de <strong>${cupo_sugerido:,.0f} COP</strong> para ser utilizado exclusivamente en comercios aliados autorizados del municipio de Puerto Rico, Caquetá.</p>
                 <p><strong>2. USO Y AMORTIZACIÓN:</strong> El cliente podrá realizar compras diferidas en cuotas quincenales (2 a 8 cuotas). Cada cuota cancelada liberará cupo disponible.</p>
-                <p><strong>3. TASAS Y COSTOS:</strong> Tasa de interés de plazo del 2.1% mensual (proporcional quincenal) y tarifa de Aval del 10% sobre compra.</p>
+                <p><strong>3. TASAS Y COSTOS:</strong> Tasa de interés de plazo del {tasa_db * 100:.2f}% mensual (proporcional quincenal) y tarifa de Aval del {aval_db * 100:.1f}% sobre compra.</p>
                 <p><strong>4. AUTORIZACIÓN Y NOTIFICACIÓN POR SMS/WHATSAPP:</strong> El CLIENTE autoriza el envío de notificaciones y la validación por código OTP enviado al número móvil <strong>{c_celular}</strong> como firma electrónica válida conforme a la Ley 527 de 1999.</p>
             </div>
             """),
@@ -1640,21 +1683,28 @@ elif opcion == "8. Gestión de Usuarios":
 
         with tab_param:
             st.subheader("⚙️ Configuración Global de Políticas y Parámetros")
-            st.caption("Ajusta los parámetros operativos de BankCali.")
+            st.caption("Ajusta los parámetros operativos de BankCali guardados en Supabase.")
+
+            tasa_db, aval_db, monto_min_db = obtener_parametros()
 
             col_p1, col_p2 = st.columns(2)
             with col_p1:
-                st.number_input(
+                n_tasa = st.number_input(
                     "Tasa de Interés Mensual Base (%)",
-                    value=2.1,
+                    value=round(tasa_db * 100, 2),
                     step=0.1,
                     format="%.2f",
                 )
-                st.number_input(
-                    "Tarifa de Aval / Garantía (%)", value=10.0, step=0.5, format="%.1f"
+                n_aval = st.number_input(
+                    "Tarifa de Aval / Garantía (%)",
+                    value=round(aval_db * 100, 2),
+                    step=0.5,
+                    format="%.1f",
                 )
-                st.number_input(
-                    "Monto Mínimo de Compra POS ($ COP)", value=80000, step=10000
+                n_monto = st.number_input(
+                    "Monto Mínimo de Compra POS ($ COP)",
+                    value=monto_min_db,
+                    step=10000,
                 )
 
             with col_p2:
@@ -1662,8 +1712,22 @@ elif opcion == "8. Gestión de Usuarios":
                 st.text_input("Departamento", value="Caquetá")
                 st.number_input("Días de Corte Quincenal", value=15, step=1)
 
-            if st.button("💾 Guardar Parámetros del Sistema"):
-                st.success("✅ Parámetros del sistema actualizados correctamente.")
+            if st.button("💾 Guardar Parámetros en Supabase"):
+                try:
+                    with conn.session as s:
+                        s.execute(
+                            text("""
+                                UPDATE parametros 
+                                SET tasa_interes = :t, pct_aval = :a, monto_minimo = :m 
+                                WHERE id = 1
+                            """),
+                            {"t": n_tasa, "a": n_aval, "m": n_monto},
+                        )
+                        s.commit()
+                    st.success("✅ Parámetros del sistema actualizados correctamente en Supabase.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al actualizar parámetros: {e}")
 
         with tab_eliminar:
             st.subheader("🗑️ Eliminar Usuario")
