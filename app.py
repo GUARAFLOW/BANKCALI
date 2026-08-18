@@ -14,7 +14,6 @@ from twilio.rest import Client
 # Importar Plotly opcionalmente para analítica gráfica
 try:
     import plotly.express as px
-
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
@@ -277,6 +276,7 @@ if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.rol = None
     st.session_state.nombre = None
+    st.session_state.documento = None
     st.session_state.comercio_asignado = None
 
 if "compra_completada" not in st.session_state:
@@ -312,8 +312,9 @@ if not st.session_state.autenticado:
                 if not usuario_db.empty:
                     datos_usuario = usuario_db.iloc[0].to_dict()
                     st.session_state.autenticado = True
-                    st.session_state.rol = datos_usuario.get("rol", "Comercio Aliado")
+                    st.session_state.rol = datos_usuario.get("rol", "Cliente")
                     st.session_state.nombre = datos_usuario.get("nombre", "Usuario")
+                    st.session_state.documento = datos_usuario.get("documento", doc_login)
                     st.session_state.comercio_asignado = datos_usuario.get(
                         "comercio_asignado", None
                     )
@@ -354,7 +355,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # =============================================================================
-# CONTROL DE NAVEGACIÓN Y PERMISOS
+# CONTROL DE NAVEGACIÓN Y PERMISOS SEGÚN EL ROL
 # =============================================================================
 st.sidebar.success(
     f"👤 **Sesión Activa:**\n\n{st.session_state.nombre}\n*({st.session_state.rol})*"
@@ -364,32 +365,40 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.autenticado = False
     st.session_state.rol = None
     st.session_state.nombre = None
+    st.session_state.documento = None
     st.session_state.comercio_asignado = None
     reiniciar_formulario_pos()
     st.rerun()
 
 st.sidebar.markdown("---")
 
-es_admin = st.session_state.rol in [
-    "Administrador",
-    "FUNDADOR (Administrador)",
-    "FUNDADOR",
-]
+rol_actual = str(st.session_state.rol).strip()
 
-menu_opciones = [
-    "1. Simular / Solicitar Crédito (POS)",
-    "2. Registrar Nuevo Cliente + Scoring de Cupo",
-]
+es_admin = rol_actual in ["Administrador", "FUNDADOR (Administrador)", "FUNDADOR"]
+es_comercio = rol_actual in ["Comercio Aliado", "Comercio"]
+es_cliente = rol_actual.lower() == "cliente" or (not es_admin and not es_comercio)
 
-if es_admin:
-    menu_opciones.extend([
+# Menú de opciones según el tipo de rol
+if es_cliente:
+    menu_opciones = ["👤 Mi Portal de Cliente"]
+elif es_comercio:
+    menu_opciones = [
+        "1. Simular / Solicitar Crédito (POS)",
+        "2. Registrar Nuevo Cliente + Scoring de Cupo",
+        "👤 Portal de Cliente (Vista Consulta)",
+    ]
+else:  # es_admin
+    menu_opciones = [
+        "1. Simular / Solicitar Crédito (POS)",
+        "2. Registrar Nuevo Cliente + Scoring de Cupo",
         "3. Registrar Pagos / Abonar Cuotas",
         "4. Control de Cartera y Mora (Cobranzas)",
         "5. Gestión General de Clientes",
         "6. Gestión de Almacenes Aliados",
         "7. Panel General de Administración",
         "8. Gestión de Usuarios y Parámetros",
-    ])
+        "👤 Portal de Cliente (Vista Previa)",
+    ]
 
 st.sidebar.markdown("### 🧭 Menú de Navegación")
 opcion = st.sidebar.selectbox(
@@ -414,9 +423,218 @@ st.markdown(
 )
 
 # =============================================================================
+# FUNCION/MÓDULO: PORTAL DE CLIENTE
+# =============================================================================
+def render_modulo_cliente():
+    st.header("👤 Portal del Cliente")
+    st.markdown("Consulta tu cupo, estado de cuenta, plan de cuotas y comprobantes oficiales.")
+    st.markdown("---")
+
+    doc_cliente = st.session_state.get("documento", "")
+
+    # Si es Administrador o Comercio, le permite buscar cualquier cédula para consultar
+    if es_admin or es_comercio:
+        doc_cliente_input = st.text_input("🔍 Consultar Cédula de Cliente:", value=doc_cliente)
+        if doc_cliente_input:
+            doc_cliente = doc_cliente_input.strip()
+
+    if not doc_cliente:
+        st.warning("⚠️ Ingresa un número de cédula válido para consultar la información del cliente.")
+        return
+
+    # Consultar datos del cliente en Supabase
+    df_cli = conn.query("SELECT * FROM clientes WHERE cedula = :ced", params={"ced": doc_cliente}, ttl=0)
+
+    if df_cli.empty:
+        st.error(f"❌ No se encontró ningún cliente registrado con la cédula **{doc_cliente}**.")
+        return
+
+    cli = df_cli.iloc[0].to_dict()
+
+    # Consultar créditos/solicitudes asociadas al cliente
+    df_sol = conn.query(
+        "SELECT * FROM solicitudes WHERE cedula_cliente = :ced ORDER BY fecha DESC",
+        params={"ced": doc_cliente},
+        ttl=0,
+    )
+
+    cupo_apr = float(cli.get("cupo_aprobado", 0))
+    cupo_dis = float(cli.get("cupo_disponible", 0))
+    cupo_uso = max(0.0, cupo_apr - cupo_dis)
+
+    # Verificar morosidad general
+    tiene_mora = False
+    if not df_sol.empty:
+        df_activos = df_sol[df_sol["estado"] == "ACTIVO"]
+        if not df_activos.empty:
+            for _, r in df_activos.iterrows():
+                try:
+                    f_dt = datetime.strptime(str(r["fecha"])[:10], "%Y-%m-%d")
+                    if (datetime.now() - f_dt).days > 30:
+                        tiene_mora = True
+                        break
+                except Exception:
+                    pass
+
+    estado_cuenta = "🔴 EN MORA" if tiene_mora else "🟢 AL DÍA"
+
+    # 1. 👤 INFORMACIÓN PERSONAL & 💳 GESTIÓN DE CUPO
+    col_p1, col_p2 = st.columns([1, 1], gap="large")
+
+    with col_p1:
+        st.markdown("##### 👤 Información Personal")
+        st.info(f"""
+        **Nombre:** {cli.get('nombre', 'N/A')}  
+        **Cédula:** {cli.get('cedula', 'N/A')}  
+        **Teléfono / Celular:** {cli.get('celular', 'N/A')}  
+        **Correo:** {cli.get('correo_electronico', 'N/A')}  
+        **Estado de Cuenta:** {estado_cuenta}
+        """)
+
+    with col_p2:
+        st.markdown("##### 💳 Gestión de Cupo Rotativo")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Cupo Total", f"${cupo_apr:,.0f}")
+        c2.metric("Cupo Usado", f"${cupo_uso:,.0f}")
+        c3.metric("Disponible", f"${cupo_dis:,.0f}")
+
+        pct_uso = (cupo_uso / cupo_apr) if cupo_apr > 0 else 0.0
+        st.progress(min(1.0, max(0.0, pct_uso)), text=f"Uso del cupo: {pct_uso * 100:.1f}%")
+
+    st.markdown("---")
+
+    # PESTAÑAS DETALLADAS DEL CLIENTE
+    tab_cuotas, tab_tickets, tab_sol = st.tabs([
+        "📅 Plan de Cuotas y Vencimientos",
+        "🧾 Comprobantes y Tickets POS",
+        "📝 Solicitud de Crédito / Ampliación",
+    ])
+
+    # 📅 PLAN DE CUOTAS CON FECHA DE VENCIMIENTO
+    with tab_cuotas:
+        st.subheader("📅 Plan de Cuotas Pendientes con Fecha de Vencimiento")
+
+        if df_sol.empty or df_sol[df_sol["estado"] == "ACTIVO"].empty:
+            st.success("🎉 No tienes cuotas ni créditos pendientes por pagar actualmente.")
+        else:
+            df_activos = df_sol[df_sol["estado"] == "ACTIVO"]
+            todas_cuotas = []
+            tasa_db, aval_db, _ = obtener_parametros()
+
+            for _, credito in df_activos.iterrows():
+                n_cuotas = int(credito["cuotas"])
+                monto_c = float(credito["monto_compra"])
+
+                df_a, _, _, _, _ = generar_tabla_amortizacion(monto_c, n_cuotas, pct_aval=aval_db, tasa_interes=tasa_db)
+
+                try:
+                    f_inicio = datetime.strptime(str(credito["fecha"])[:10], "%Y-%m-%d")
+                except Exception:
+                    f_inicio = datetime.now()
+
+                for idx, fila in df_a.iterrows():
+                    f_venc = f_inicio + timedelta(days=15 * (idx + 1))
+                    es_vencida = f_venc < datetime.now()
+
+                    todas_cuotas.append({
+                        "ID Crédito": credito["id"],
+                        "Comercio": credito["comercio"],
+                        "N° Cuota": fila["N° Cuota"],
+                        "Fecha Vencimiento": f_venc.strftime("%Y-%m-%d"),
+                        "Valor Cuota ($ COP)": f"${fila['Valor Cuota ($)']:,.0f}",
+                        "Estado": "🔴 VENCIDA" if es_vencida else "🟡 PENDIENTE",
+                    })
+
+            df_cuotas_vis = pd.DataFrame(todas_cuotas)
+            st.dataframe(df_cuotas_vis, use_container_width=True, hide_index=True)
+
+    # 🧾 COMPROBANTES Y TICKETS POS
+    with tab_tickets:
+        st.subheader("🧾 Historial de Compras y Comprobantes POS")
+
+        if df_sol.empty:
+            st.info("No se registran compras asociadas a este cliente.")
+        else:
+            for _, reg in df_sol.iterrows():
+                with st.expander(f"🛒 Compra en {reg['comercio']} - {reg['fecha']} (${float(reg['monto_compra']):,.0f} COP)"):
+                    col_t1, col_t2 = st.columns([3, 1])
+                    with col_t1:
+                        st.write(f"**N° Crédito:** {reg['id']}")
+                        st.write(f"**Cuotas:** {reg['cuotas']} quincenales")
+                        st.write(f"**Saldo Pendiente:** ${float(reg['saldo_pendiente']):,.0f} COP")
+                        st.write(f"**Estado del Crédito:** {reg['estado']}")
+
+                    with col_t2:
+                        if st.button("🧾 Ver Ticket", key=f"btn_tck_{reg['id']}"):
+                            st.session_state[f"show_ticket_{reg['id']}"] = True
+
+                    if st.session_state.get(f"show_ticket_{reg['id']}", False):
+                        tck_id = reg['id']
+                        tck_fecha = reg['fecha']
+                        tck_comercio = reg['comercio']
+                        tck_monto = float(reg['monto_compra'])
+                        tck_cuotas = reg['cuotas']
+                        tck_vlr_cuota = float(reg['valor_cuota'])
+                        tck_total = float(reg['total_pagar'])
+
+                        qr_data = f"BANKCALI|CREDITO:{tck_id}|CEDULA:{cli['cedula']}|TOTAL:{tck_total:,.0f}"
+                        qr_img = qrcode.make(qr_data)
+                        buf = io.BytesIO()
+                        qr_img.save(buf, format="PNG")
+                        qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+                        st.markdown(f"""
+                        <div style="border: 2px dashed #d3ad69; border-radius: 10px; padding: 15px; background-color: #fffdf5; max-width: 350px; margin: 10px auto; font-family: monospace; color: #111;">
+                            <div style="text-align: center;">
+                                <h3 style="margin: 0; color: #0d233a;">{tck_comercio}</h3>
+                                <p style="font-size: 11px; margin: 2px 0;">Financiado por <b>BANKCALI</b><br>Puerto Rico, Caquetá</p>
+                            </div>
+                            <hr style="border-top: 1px dashed #666;">
+                            <p style="font-size: 12px; margin: 0;">
+                                <b>N° Crédito:</b> {tck_id}<br>
+                                <b>Fecha:</b> {tck_fecha}<br>
+                                <b>Cliente:</b> {cli['nombre']}<br>
+                                <b>Cédula:</b> {cli['cedula']}
+                            </p>
+                            <hr style="border-top: 1px dashed #666;">
+                            <p style="font-size: 12px; margin: 0;">
+                                <b>Monto Compra:</b> ${tck_monto:,.0f} COP<br>
+                                <b>N° Cuotas:</b> {tck_cuotas}<br>
+                                <b>Valor Cuota:</b> ${tck_vlr_cuota:,.0f} COP<br>
+                                <b>Total a Pagar:</b> ${tck_total:,.0f} COP
+                            </p>
+                            <hr style="border-top: 1px dashed #666;">
+                            <div style="text-align: center;">
+                                <img src="data:image/png;base64,{qr_b64}" style="width: 75px; height: 75px;" />
+                                <p style="font-size: 10px; margin-top: 4px;">Comprobante Oficial BankCali</p>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+    # 📝 SOLICITUD DE CRÉDITO / AMPLIACIÓN DE CUPO
+    with tab_sol:
+        st.subheader("📝 Solicitud de Crédito / Ampliación de Cupo")
+        st.markdown("Solicita un aumento de cupo o un nuevo crédito especial directamente.")
+
+        with st.form("form_solicitud_cliente_portal"):
+            tipo_sol = st.selectbox("Tipo de Solicitud *", ["Ampliación de Cupo Rotativo", "Nuevo Crédito Especial"])
+            monto_sol = st.number_input("Monto Requerido ($ COP) *", min_value=50000, step=50000, value=200000)
+            plazo_pref = st.selectbox("Plazo Preferido *", ["2 Quincenas", "4 Quincenas", "6 Quincenas", "8 Quincenas"])
+            motivo_sol = st.text_area("Motivo de la solicitud o soporte de ingresos")
+
+            btn_enviar_sol = st.form_submit_button("🚀 Enviar Solicitud a Evaluación")
+
+            if btn_enviar_sol:
+                st.success("✅ Tu solicitud de crédito/ampliación ha sido enviada con éxito al administrador.")
+
+# RENDERIZADO DEL PORTAL CLIENTE
+if "Portal de Cliente" in opcion:
+    render_modulo_cliente()
+
+# =============================================================================
 # MÓDULO 1: SOLICITUD EN POS CON AMORTIZACIÓN Y TICKET IMPRIMIBLE
 # =============================================================================
-if opcion == "1. Simular / Solicitar Crédito (POS)":
+elif opcion == "1. Simular / Solicitar Crédito (POS)":
     st.header("🏪 Módulo de Punto de Venta (Comercio Aliado)")
     st.markdown(
         "Simulación, cronograma de amortización y generación de ticket de venta imprimible."
@@ -625,9 +843,7 @@ if opcion == "1. Simular / Solicitar Crédito (POS)":
                 else:
                     st.error("❌ Código OTP incorrecto.")
 
-        # =============================================================================
-        # RENDERIZADO DEL TICKET POS (SOLO SE MUESTRA TRAS UNA VENTA EXITOSA)
-        # =============================================================================
+        # RENDERIZADO DEL TICKET POS
         if st.session_state.compra_completada and "ultimo_ticket" in st.session_state:
             t = st.session_state["ultimo_ticket"]
 
@@ -1547,7 +1763,7 @@ elif opcion == "8. Gestión de Usuarios y Parámetros":
                 with col_u2:
                     u_rol = st.selectbox(
                         "Rol del Usuario *",
-                        ["Comercio Aliado", "Administrador", "FUNDADOR (Administrador)"],
+                        ["Cliente", "Comercio Aliado", "Administrador", "FUNDADOR (Administrador)"],
                     )
                     u_pin = st.text_input(
                         "PIN de Acceso (Numérico) *",
@@ -1619,7 +1835,7 @@ elif opcion == "8. Gestión de Usuarios y Parámetros":
                             else 0
                         )
 
-                        roles_disponibles = ["Comercio Aliado", "Administrador", "FUNDADOR (Administrador)"]
+                        roles_disponibles = ["Cliente", "Comercio Aliado", "Administrador", "FUNDADOR (Administrador)"]
                         idx_rol = (
                             roles_disponibles.index(curr_data["rol"])
                             if curr_data.get("rol") in roles_disponibles
