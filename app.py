@@ -1867,7 +1867,8 @@ elif opcion == "7. Panel General de Administración" and es_admin:
             "SELECT id, fecha, comercio, cedula_cliente, monto_compra, cuotas, valor_cuota, total_pagar, saldo_pendiente, estado FROM solicitudes",
             ttl=0,
         )
-        df_clientes_tot = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
+        # Carga de datos de clientes desde Supabase
+        res_clientes = conn.query("SELECT cupo_aprobado FROM clientes", ttl=0)
 
         total_colocado = (
             safe_float(df_solicitudes["monto_compra"].sum()) if not df_solicitudes.empty else 0.0
@@ -1875,14 +1876,22 @@ elif opcion == "7. Panel General de Administración" and es_admin:
         total_saldo = (
             safe_float(df_solicitudes["saldo_pendiente"].sum()) if not df_solicitudes.empty else 0.0
         )
-        total_cupos = (
-            safe_float(df_clientes_tot["cupo_aprobado"].sum()) if not df_clientes_tot.empty else 0.0
-        )
+
+        if not res_clientes.empty:
+            # Convertir a flotante y manejar posibles valores None/NULL
+            total_cupos = sum(safe_float(c) for c in res_clientes["cupo_aprobado"])
+        else:
+            total_cupos = 0.0
 
         kpi1, kpi2, kpi3 = st.columns(3)
-        kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP")
-        kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP")
-        kpi3.metric("Cupos Aprobados Globales", f"${total_cupos:,.0f} COP")
+        kpi1.metric("Capital Colocado Total", f"${total_colocado:,.0f} COP".replace(",", "."))
+        kpi2.metric("Saldo en Cartera Activa", f"${total_saldo:,.0f} COP".replace(",", "."))
+        
+        # Renderizado en la métrica de Streamlit
+        kpi3.metric(
+            label="Cupos Aprobados Globales", 
+            value=f"${total_cupos:,.0f} COP".replace(",", ".")
+        )
 
         st.markdown("---")
         st.subheader("📊 Análisis Visual de Rendimiento y Riesgo")
