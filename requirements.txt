@@ -7,6 +7,4 @@ requests
 plotly
 qrcode
 pillow
-git add app.py
-git commit -m "Agregar opción de registro"
-git push origin main
+
