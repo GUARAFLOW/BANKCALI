@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 import streamlit as st
 from twilio.rest import Client
 import sys
-from datetime import datetime, timedelta
 
 # Importar Plotly opcionalmente para analítica gráfica
 try:
@@ -19,6 +18,130 @@ try:
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
+
+# =============================================================================
+# CONFIGURACIÓN DE LA PÁGINA
+# =============================================================================
+st.set_page_config(
+    page_title="BankCali | Plataforma Financiera",
+    page_icon="💳",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# =============================================================================
+# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS EN SUPABASE
+# =============================================================================
+conn = st.connection("supabase", type="sql")
+
+try:
+    with conn.session as s:
+        # 1. Tabla de Comercios
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS comercios (
+                    nombre TEXT PRIMARY KEY,
+                    comision NUMERIC(5,2) DEFAULT 5.00,
+                    logo_base64 TEXT
+                );
+            """)
+        )
+        s.execute(
+            text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
+        )
+
+        # 2. Tabla de Usuarios
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    documento TEXT PRIMARY KEY,
+                    nombre TEXT,
+                    rol TEXT,
+                    pin TEXT,
+                    comercio_asignado TEXT
+                );
+            """)
+        )
+
+        # 3. Tabla de Clientes
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS clientes (
+                    cedula TEXT PRIMARY KEY,
+                    nombre TEXT,
+                    celular TEXT,
+                    correo_electronico TEXT,
+                    direccion TEXT,
+                    ocupacion TEXT,
+                    ingresos NUMERIC,
+                    gastos NUMERIC,
+                    cupo_aprobado NUMERIC,
+                    cupo_disponible NUMERIC
+                );
+            """)
+        )
+
+        # 4. Tabla de Solicitudes y Créditos
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS solicitudes (
+                    id TEXT PRIMARY KEY,
+                    fecha TEXT,
+                    comercio TEXT,
+                    cedula_cliente TEXT,
+                    monto_compra NUMERIC,
+                    cuotas INT,
+                    valor_cuota NUMERIC,
+                    total_pagar NUMERIC,
+                    saldo_pendiente NUMERIC,
+                    estado TEXT
+                );
+            """)
+        )
+
+        # 5. Tabla de Pagos
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS pagos (
+                    id SERIAL PRIMARY KEY,
+                    fecha TEXT,
+                    id_credito TEXT,
+                    monto_pagado NUMERIC
+                );
+            """)
+        )
+
+        # 6. Tabla de Parámetros Globales
+        s.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS parametros (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    tasa_interes NUMERIC(5,2) DEFAULT 2.10,
+                    pct_aval NUMERIC(5,2) DEFAULT 10.00,
+                    monto_minimo INT DEFAULT 80000,
+                    CONSTRAINT single_row CHECK (id = 1)
+                );
+            """)
+        )
+        s.execute(
+            text("""
+                INSERT INTO parametros (id, tasa_interes, pct_aval, monto_minimo)
+                VALUES (1, 2.10, 10.00, 80000)
+                ON CONFLICT (id) DO NOTHING;
+            """)
+        )
+
+        # 7. Usuario Administrador por Defecto (en caso de BD limpia)
+        s.execute(
+            text("""
+                INSERT INTO usuarios (documento, nombre, rol, pin, comercio_asignado)
+                VALUES ('123456789', 'Administrador Principal', 'FUNDADOR (Administrador)', '1234', 'N/A - Administrador')
+                ON CONFLICT (documento) DO NOTHING;
+            """)
+        )
+        s.commit()
+except Exception as e:
+    st.error(f"⚠️ Nota de Inicialización de BD: {e}")
 
 # =============================================================================
 # MODO TAREA PROGRAMADA / SEGUNDO PLANO (EJECUCIÓN VÍA CRON O GITHUB ACTIONS)
@@ -97,16 +220,6 @@ def safe_int(val, default=0):
         return default
 
 # =============================================================================
-# CONFIGURACIÓN DE LA PÁGINA
-# =============================================================================
-st.set_page_config(
-    page_title="BankCali | Plataforma Financiera",
-    page_icon="💳",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# =============================================================================
 # ESTILOS CSS PERSONALIZADOS, FORMATO TICKET POS Y ESTILOS DE IMPRESIÓN
 # =============================================================================
 st.markdown(
@@ -179,38 +292,6 @@ st.markdown(
 """),
     unsafe_allow_html=True,
 )
-
-# =============================================================================
-# CONEXIÓN Y MIGRACIÓN AUTOMÁTICA DE BASE DE DATOS EN SUPABASE
-# =============================================================================
-conn = st.connection("supabase", type="sql")
-
-try:
-    with conn.session as s:
-        s.execute(
-            text("ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo_base64 TEXT;")
-        )
-        s.execute(
-            text("""
-                CREATE TABLE IF NOT EXISTS parametros (
-                    id INT PRIMARY KEY DEFAULT 1,
-                    tasa_interes NUMERIC(5,2) DEFAULT 2.10,
-                    pct_aval NUMERIC(5,2) DEFAULT 10.00,
-                    monto_minimo INT DEFAULT 80000,
-                    CONSTRAINT single_row CHECK (id = 1)
-                );
-            """)
-        )
-        s.execute(
-            text("""
-                INSERT INTO parametros (id, tasa_interes, pct_aval, monto_minimo)
-                VALUES (1, 2.10, 10.00, 80000)
-                ON CONFLICT (id) DO NOTHING;
-            """)
-        )
-        s.commit()
-except Exception:
-    pass
 
 # =============================================================================
 # FUNCIONES AUXILIARES Y CONSULTA DE PARÁMETROS CENTRALIZADOS
@@ -1442,6 +1523,7 @@ elif opcion == "4. Control de Cartera y Mora (Cobranzas)" and es_admin:
             use_container_width=True,
             hide_index=True,
         )
+
 # =============================================================================
 # MÓDULO 5: GESTIÓN GENERAL DE CLIENTES Y APROBACIÓN DE SOLICITUDES (SOLO ADMIN)
 # =============================================================================
@@ -1531,7 +1613,6 @@ elif opcion == "5. Gestión General de Clientes" and es_admin:
                     if st.button("✅ Aprobar Solicitud", use_container_width=True, type="primary"):
                         try:
                             with conn.session as s:
-                                # Si es ampliación de cupo, incrementa cupo_aprobado y cupo_disponible en clientes
                                 if "Ampliación" in str(detalle["comercio"]):
                                     s.execute(
                                         text("""
@@ -1550,7 +1631,6 @@ elif opcion == "5. Gestión General de Clientes" and es_admin:
                                         {"id": sol_sel},
                                     )
                                 else:
-                                    # Si es un crédito especial directo, pasa a estado ACTIVO
                                     s.execute(
                                         text("UPDATE solicitudes SET estado = 'ACTIVO' WHERE id = :id"),
                                         {"id": sol_sel},
